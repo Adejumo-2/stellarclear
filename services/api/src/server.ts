@@ -687,7 +687,14 @@ export class ApiServer {
           observedAt: typeof obs.observed_at === "string" ? obs.observed_at : obs.observed_at.toISOString(),
         };
 
-        const resultStatus: ReconciliationStatus = found.status === "BREAK" ? "BREAK" : "MATCHED";
+        const rec = await this.recRepo.findByCaseId(caseId, this.config.network);
+        const resultStatus: ReconciliationStatus =
+          (rec && !rec.matched) ||
+          found.status === "BREAK" ||
+          found.status === "DISPUTED" ||
+          found.status === "RESOLVED"
+            ? "BREAK"
+            : "MATCHED";
         const finalizedLedger = Number(found.finalized_at_ledger ?? obs.observed_ledger ?? found.expires_at_ledger);
 
         const proof = createSettlementProof({

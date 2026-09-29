@@ -16,6 +16,10 @@ The StellarClear API service provides endpoints to manage the end-to-end settlem
 | `GET` | `/ready` | Service readiness and database connectivity |
 | `POST` | `/v1/cases` | Create a new settlement case and anchor on Soroban |
 | `GET` | `/v1/cases/:caseId` | Retrieve a settlement case by 32-byte hex ID |
+| `GET` | `/v1/cases/:caseId/onchain` | Query authoritative on-chain contract state |
+| `GET` | `/v1/cases/:caseId/history` | Query on-chain historical transaction hashes |
+| `GET` | `/v1/cases/:caseId/consistency` | Verify consistency between off-chain database and Soroban state |
+| `GET` | `/v1/cases/:caseId/audit` | Retrieve complete audit trail and milestone events |
 | `POST` | `/v1/cases/:caseId/observe` | Record an observed Stellar settlement transaction |
 | `POST` | `/v1/cases/:caseId/reconcile` | Run automated reconciliation matcher and anchor decision |
 | `GET` | `/v1/cases/:caseId/breaks` | List reconciliation break diagnostics |

@@ -29,6 +29,10 @@ Comprehensive guides and technical documentation are available in the [`docs/`](
 - [Proof & Cryptographic Verification Guide](./docs/proof-verification.md) — Canonical commitments, offline verification, and live Soroban state verification.
 - [Soroban Smart Contract Integration](./docs/soroban-integration.md) — `SettlementRegistry` bindings, SDK operations, and event indexing.
 - [REST API Reference](./docs/api.md) — Endpoints, Zod schemas, request/response examples, and error model.
+- [Deployment & Setup Guide](./docs/deployment.md) — Soroban contract deployment, Postgres migrations, environment variables, and Docker.
+- [Operations & Monitoring Guide](./docs/operations.md) — Health/readiness probes, consistency checks, audit histories, and idempotency.
+- [Troubleshooting & Break Remediation](./docs/troubleshooting.md) — Break diagnoses, Soroban contract error codes, and indexer resynchronization.
+- [Integration Verification Guide](./docs/integration-verification.md) — Test suite layout, running live Soroban lifecycles, and verification procedures.
 
 ---
 

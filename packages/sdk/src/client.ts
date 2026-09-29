@@ -357,4 +357,18 @@ export class StellarClearClient {
   ): Promise<contract.AssembledTransaction<contract.Result<void, contract.ErrorMessage>>> {
     return this.contractClient.remove_observer({ observer }, options);
   }
+
+  /**
+   * Reads latest ledger sequence from the Stellar RPC server.
+   */
+  public async getLatestLedger(): Promise<number> {
+    const res = await this.rpcServer.getLatestLedger();
+    return res.sequence;
+  }
 }
+
+/**
+ * Alias for StellarClearClient providing SettlementRegistry operations.
+ */
+export class SettlementRegistryClient extends StellarClearClient {}
+

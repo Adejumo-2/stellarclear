@@ -42,3 +42,11 @@ export interface AttestationRecord {
   commitment: string;
   attestedAtLedger: number;
 }
+
+export interface TransactionResult<T = void> {
+  txHash: string;
+  ledger?: number;
+  result: T;
+  status: "SUCCESS" | "FAILED";
+}
+

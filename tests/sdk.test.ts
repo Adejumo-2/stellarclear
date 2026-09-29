@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   StellarClearClient,
+  SettlementRegistryClient,
   Networks,
   ValidationError,
   ConflictError,
@@ -229,5 +230,31 @@ describe("SDK Package - Error Normalization", () => {
   it("normalizes simulation strings containing contract error codes", () => {
     const simErr = normalizeContractError(new Error("HostError: Error(Contract, #6)"));
     assert.ok(simErr instanceof UnauthorizedError);
+  });
+});
+
+describe("SDK Package - SettlementRegistryClient Operations", () => {
+  it("initializes SettlementRegistryClient and exposes registry operations", () => {
+    const registryClient = new SettlementRegistryClient({
+      network: Networks.TESTNET.network,
+      networkPassphrase: Networks.TESTNET.networkPassphrase,
+      rpcUrl: Networks.TESTNET.rpcUrl,
+      contractId: VALID_CONTRACT_ID,
+    });
+
+    assert.ok(registryClient instanceof StellarClearClient);
+    assert.strictEqual(typeof registryClient.createCase, "function");
+    assert.strictEqual(typeof registryClient.recordObservation, "function");
+    assert.strictEqual(typeof registryClient.recordMatch, "function");
+    assert.strictEqual(typeof registryClient.recordBreak, "function");
+    assert.strictEqual(typeof registryClient.submitAttestation, "function");
+    assert.strictEqual(typeof registryClient.openDispute, "function");
+    assert.strictEqual(typeof registryClient.submitResolution, "function");
+    assert.strictEqual(typeof registryClient.finalizeCase, "function");
+    assert.strictEqual(typeof registryClient.getCase, "function");
+    assert.strictEqual(typeof registryClient.getAttestation, "function");
+    assert.strictEqual(typeof registryClient.isObserver, "function");
+    assert.strictEqual(typeof registryClient.getResolution, "function");
+    assert.strictEqual(typeof registryClient.getLatestLedger, "function");
   });
 });

@@ -42,4 +42,36 @@ export class ReconciliationRepository {
     const res = await this.client.query<DbReconciliationResult>(sql, [caseId, network]);
     return res.rows[0] ?? null;
   }
+
+  public async updateChainReferences(
+    caseId: string,
+    network: string,
+    refs: { reconciliation_tx_hash?: string; confirmed_at_ledger?: number }
+  ): Promise<void> {
+    if ("getTable" in this.client) {
+      const mem = this.client as unknown as InMemoryDatabaseClient;
+      const table = mem.getTable("reconciliation_results");
+      const row = table.find((r) => r["case_id"] === caseId && r["network"] === network);
+      if (row) {
+        Object.assign(row, refs);
+      }
+      return;
+    }
+
+    const setClauses: string[] = [];
+    const values: unknown[] = [];
+    let idx = 1;
+    if (refs.reconciliation_tx_hash !== undefined) {
+      setClauses.push(`reconciliation_tx_hash = $${idx++}`);
+      values.push(refs.reconciliation_tx_hash);
+    }
+    if (refs.confirmed_at_ledger !== undefined) {
+      setClauses.push(`confirmed_at_ledger = $${idx++}`);
+      values.push(refs.confirmed_at_ledger);
+    }
+    if (setClauses.length === 0) return;
+    values.push(caseId, network);
+    const sql = `UPDATE reconciliation_results SET ${setClauses.join(", ")} WHERE case_id = $${idx++} AND network = $${idx};`;
+    await this.client.query(sql, values);
+  }
 }

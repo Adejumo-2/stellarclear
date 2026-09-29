@@ -4,3 +4,4 @@ export * from "./server.js";
 export * from "./settlement.js";
 export * from "./chain-verifier.js";
 export * from "./attestations.js";
+export * from "./disputes.js";

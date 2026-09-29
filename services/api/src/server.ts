@@ -36,6 +36,11 @@ import type { HttpRequest, HttpResponse } from "./types.js";
 import { SorobanSettlementAnchor, type OnChainAnchorService } from "./settlement.js";
 import { SorobanChainVerifier } from "./chain-verifier.js";
 import { AttestationService, SubmitAttestationRequestSchema } from "./attestations.js";
+import {
+  DisputeService,
+  OpenDisputeRequestSchema,
+  SubmitResolutionRequestSchema,
+} from "./disputes.js";
 
 export interface InjectOptions {
   method: string;
@@ -54,6 +59,7 @@ export class ApiServer {
   public readonly anchorService: OnChainAnchorService;
   public readonly chainVerifier: SorobanChainVerifier;
   public readonly attestationService: AttestationService;
+  public readonly disputeService: DisputeService;
 
   constructor(
     configInput: ApiConfigInput | ApiConfig,
@@ -74,6 +80,11 @@ export class ApiServer {
     this.attestationService = new AttestationService(
       this.caseRepo,
       this.attestationRepo,
+      this.anchorService,
+      this.config.network
+    );
+    this.disputeService = new DisputeService(
+      this.caseRepo,
       this.anchorService,
       this.config.network
     );
@@ -529,6 +540,96 @@ export class ApiServer {
               caseId,
               attestations,
             },
+          };
+        } catch (err: unknown) {
+          const message = (err as Error).message;
+          if (message.includes("not found")) {
+            return this.errorResponse(404, "NOT_FOUND", message, requestId);
+          }
+          throw err;
+        }
+      }
+
+      // 8c. POST /v1/cases/:caseId/dispute
+      const disputeMatch = pathname.match(/^\/v1\/cases\/([a-zA-Z0-9_-]+)\/dispute$/);
+      if (method === "POST" && disputeMatch) {
+        const rawCaseId = disputeMatch[1];
+        const parsedId = Bytes32HexSchema.safeParse(rawCaseId);
+        if (!parsedId.success) {
+          return this.errorResponse(400, "VALIDATION_ERROR", "Invalid case ID format", requestId);
+        }
+        const caseId = parsedId.data;
+        const parsedBody = OpenDisputeRequestSchema.safeParse(req.body);
+        if (!parsedBody.success) {
+          return this.errorResponse(400, "VALIDATION_ERROR", parsedBody.error.message, requestId, parsedBody.error.issues);
+        }
+
+        try {
+          const result = await this.disputeService.openDispute(caseId, parsedBody.data);
+          return {
+            statusCode: 201,
+            headers: { "content-type": "application/json", "x-request-id": requestId },
+            body: result,
+          };
+        } catch (err: unknown) {
+          const message = (err as Error).message;
+          if (message.includes("not found")) {
+            return this.errorResponse(404, "NOT_FOUND", message, requestId);
+          }
+          if (message.includes("Cannot open dispute") || message.includes("Expected status")) {
+            return this.errorResponse(400, "INVALID_STATE", message, requestId);
+          }
+          throw err;
+        }
+      }
+
+      // 8d. POST /v1/cases/:caseId/resolve
+      const resolveMatch = pathname.match(/^\/v1\/cases\/([a-zA-Z0-9_-]+)\/resolve$/);
+      if (method === "POST" && resolveMatch) {
+        const rawCaseId = resolveMatch[1];
+        const parsedId = Bytes32HexSchema.safeParse(rawCaseId);
+        if (!parsedId.success) {
+          return this.errorResponse(400, "VALIDATION_ERROR", "Invalid case ID format", requestId);
+        }
+        const caseId = parsedId.data;
+        const parsedBody = SubmitResolutionRequestSchema.safeParse(req.body);
+        if (!parsedBody.success) {
+          return this.errorResponse(400, "VALIDATION_ERROR", parsedBody.error.message, requestId, parsedBody.error.issues);
+        }
+
+        try {
+          const result = await this.disputeService.submitResolution(caseId, parsedBody.data);
+          return {
+            statusCode: 200,
+            headers: { "content-type": "application/json", "x-request-id": requestId },
+            body: result,
+          };
+        } catch (err: unknown) {
+          const message = (err as Error).message;
+          if (message.includes("not found")) {
+            return this.errorResponse(404, "NOT_FOUND", message, requestId);
+          }
+          if (message.includes("Cannot submit resolution") || message.includes("Expected status")) {
+            return this.errorResponse(400, "INVALID_STATE", message, requestId);
+          }
+          throw err;
+        }
+      }
+
+      // 8e. GET /v1/cases/:caseId/dispute
+      if (method === "GET" && disputeMatch) {
+        const rawCaseId = disputeMatch[1];
+        const parsedId = Bytes32HexSchema.safeParse(rawCaseId);
+        if (!parsedId.success) {
+          return this.errorResponse(400, "VALIDATION_ERROR", "Invalid case ID format", requestId);
+        }
+        const caseId = parsedId.data;
+        try {
+          const result = await this.disputeService.getDispute(caseId);
+          return {
+            statusCode: 200,
+            headers: { "content-type": "application/json", "x-request-id": requestId },
+            body: result,
           };
         } catch (err: unknown) {
           const message = (err as Error).message;

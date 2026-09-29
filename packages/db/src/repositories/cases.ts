@@ -19,15 +19,18 @@ export class CaseRepository {
 
     const sql = `
       INSERT INTO settlement_cases (
-        id, network, owner, counterparty, trade_reference, asset, amount,
+        id, network, contract_id, owner, counterparty, trade_reference, asset, amount,
         expected_destination, reference, terms_commitment, expires_at_ledger,
-        status, created_at_ledger, finalized_at_ledger, created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW(), NOW())
+        status, create_tx_hash, observation_tx_hash, reconciliation_tx_hash,
+        attestation_tx_hash, dispute_tx_hash, resolution_tx_hash, finalization_tx_hash,
+        submission_status, confirmed_at_ledger, created_at_ledger, finalized_at_ledger, created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, NOW(), NOW())
       RETURNING *;
     `;
     const params = [
       caseData.id,
       caseData.network,
+      caseData.contract_id ?? null,
       caseData.owner,
       caseData.counterparty ?? null,
       caseData.trade_reference,
@@ -38,11 +41,60 @@ export class CaseRepository {
       caseData.terms_commitment,
       caseData.expires_at_ledger,
       caseData.status,
+      caseData.create_tx_hash ?? null,
+      caseData.observation_tx_hash ?? null,
+      caseData.reconciliation_tx_hash ?? null,
+      caseData.attestation_tx_hash ?? null,
+      caseData.dispute_tx_hash ?? null,
+      caseData.resolution_tx_hash ?? null,
+      caseData.finalization_tx_hash ?? null,
+      caseData.submission_status ?? null,
+      caseData.confirmed_at_ledger ?? null,
       caseData.created_at_ledger ?? null,
       caseData.finalized_at_ledger ?? null,
     ];
     const res = await this.client.query<DbSettlementCase>(sql, params);
     return res.rows[0];
+  }
+
+  public async updateChainReferences(
+    id: string,
+    network: string,
+    refs: Partial<DbSettlementCase>
+  ): Promise<void> {
+    if ("getTable" in this.client) {
+      const mem = this.client as unknown as InMemoryDatabaseClient;
+      const table = mem.getTable("settlement_cases");
+      const row = table.find((r) => r["id"] === id.toLowerCase() && r["network"] === network);
+      if (row) {
+        Object.assign(row, refs, { updated_at: new Date() });
+      }
+      return;
+    }
+
+    const setClauses: string[] = [];
+    const values: unknown[] = [];
+    let paramIdx = 1;
+
+    for (const [key, val] of Object.entries(refs)) {
+      if (key !== "id" && key !== "network") {
+        setClauses.push(`${key} = $${paramIdx}`);
+        values.push(val);
+        paramIdx++;
+      }
+    }
+
+    if (setClauses.length === 0) return;
+
+    setClauses.push(`updated_at = NOW()`);
+    values.push(id.toLowerCase(), network);
+
+    const sql = `
+      UPDATE settlement_cases
+      SET ${setClauses.join(", ")}
+      WHERE id = $${paramIdx} AND network = $${paramIdx + 1};
+    `;
+    await this.client.query(sql, values);
   }
 
   public async findById(id: string, network: string): Promise<DbSettlementCase | null> {

@@ -120,10 +120,12 @@ export class ApiServer {
           return this.errorResponse(409, "CONFLICT", `Case ${expected.caseId} already exists`, requestId);
         }
 
+        const anchorResult = await this.anchorService.anchorCaseCreation(expected);
         const now = new Date();
         await this.caseRepo.insert({
           id: expected.caseId,
           network: this.config.network,
+          contract_id: this.config.contractId,
           owner: expected.owner,
           counterparty: expected.counterparty ?? null,
           trade_reference: expected.tradeReference,
@@ -134,11 +136,11 @@ export class ApiServer {
           terms_commitment: termsCommitment,
           expires_at_ledger: expected.deadline,
           status: "OPEN",
+          create_tx_hash: anchorResult.txHash,
+          submission_status: "CONFIRMED",
           created_at: now,
           updated_at: now,
         });
-
-        const anchorResult = await this.anchorService.anchorCaseCreation(expected);
 
         return {
           statusCode: 201,
@@ -174,6 +176,7 @@ export class ApiServer {
           body: {
             caseId: found.id,
             network: found.network,
+            contractId: found.contract_id ?? this.config.contractId,
             owner: found.owner,
             counterparty: found.counterparty,
             tradeReference: found.trade_reference,
@@ -184,6 +187,15 @@ export class ApiServer {
             termsCommitment: found.terms_commitment,
             expiresAtLedger: Number(found.expires_at_ledger),
             status: found.status,
+            createTxHash: found.create_tx_hash ?? undefined,
+            observationTxHash: found.observation_tx_hash ?? undefined,
+            reconciliationTxHash: found.reconciliation_tx_hash ?? undefined,
+            attestationTxHash: found.attestation_tx_hash ?? undefined,
+            disputeTxHash: found.dispute_tx_hash ?? undefined,
+            resolutionTxHash: found.resolution_tx_hash ?? undefined,
+            finalizationTxHash: found.finalization_tx_hash ?? undefined,
+            submissionStatus: found.submission_status ?? undefined,
+            confirmedAtLedger: found.confirmed_at_ledger ? Number(found.confirmed_at_ledger) : undefined,
             createdAtLedger: found.created_at_ledger ? Number(found.created_at_ledger) : undefined,
             finalizedAtLedger: found.finalized_at_ledger ? Number(found.finalized_at_ledger) : undefined,
             createdAt: new Date(found.created_at).toISOString(),
@@ -214,6 +226,12 @@ export class ApiServer {
 
         const obs: ObservedSettlement = parsedBody.data.observation;
         const obsCommitment = computeObservationCommitment(obs);
+        const anchorResult = await this.anchorService.anchorObservation({
+          observer: obs.destination,
+          caseId,
+          observation: obs,
+        });
+
         await this.obsRepo.insert({
           network: this.config.network,
           case_id: caseId,
@@ -221,6 +239,7 @@ export class ApiServer {
           tx_hash: obs.txHash,
           observed_ledger: obs.ledger,
           observation_commitment: obsCommitment,
+          observation_tx_hash: anchorResult.txHash,
           asset: obs.asset,
           amount: obs.amount,
           destination: obs.destination,
@@ -230,10 +249,8 @@ export class ApiServer {
         });
 
         await this.caseRepo.updateStatus(caseId, this.config.network, "OBSERVED");
-        const anchorResult = await this.anchorService.anchorObservation({
-          observer: obs.destination,
-          caseId,
-          observation: obs,
+        await this.caseRepo.updateChainReferences(caseId, this.config.network, {
+          observation_tx_hash: anchorResult.txHash,
         });
 
         return {
@@ -290,6 +307,12 @@ export class ApiServer {
           : undefined;
 
         const result = reconcileSettlement(expected, observed);
+        const anchorResult = await this.anchorService.anchorReconciliation({
+          observer: expected.owner,
+          caseId,
+          status: result.status,
+          breakCode: result.breaks[0]?.code,
+        });
 
         // Persist reconciliation and breaks
         const recRecord = await this.recRepo.insert({
@@ -297,6 +320,7 @@ export class ApiServer {
           case_id: caseId,
           status: result.status,
           matched: result.matched,
+          reconciliation_tx_hash: anchorResult.txHash,
           reconciled_at: result.reconciledAt,
         });
 
@@ -316,11 +340,8 @@ export class ApiServer {
         }
 
         await this.caseRepo.updateStatus(caseId, this.config.network, result.status);
-        const anchorResult = await this.anchorService.anchorReconciliation({
-          observer: expected.owner,
-          caseId,
-          status: result.status,
-          breakCode: result.breaks[0]?.code,
+        await this.caseRepo.updateChainReferences(caseId, this.config.network, {
+          reconciliation_tx_hash: anchorResult.txHash,
         });
 
         return {

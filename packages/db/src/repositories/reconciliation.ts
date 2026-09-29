@@ -14,8 +14,8 @@ export class ReconciliationRepository {
     }
 
     const sql = `
-      INSERT INTO reconciliation_results (network, case_id, status, matched, reconciled_at, created_at)
-      VALUES ($1, $2, $3, $4, $5, NOW())
+      INSERT INTO reconciliation_results (network, case_id, status, matched, reconciliation_tx_hash, confirmed_at_ledger, reconciled_at, created_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
       RETURNING *;
     `;
     const res = await this.client.query<DbReconciliationResult>(sql, [
@@ -23,6 +23,8 @@ export class ReconciliationRepository {
       result.case_id,
       result.status,
       result.matched,
+      result.reconciliation_tx_hash ?? null,
+      result.confirmed_at_ledger ?? null,
       result.reconciled_at,
     ]);
     return res.rows[0];

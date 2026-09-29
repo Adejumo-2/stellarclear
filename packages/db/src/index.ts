@@ -1,6 +1,7 @@
 export * from "./config.js";
 export * from "./client.js";
 export * from "./types.js";
+export * from "./schema.js";
 export * from "./migrations.js";
 export * from "./repositories/cases.js";
 export * from "./repositories/observations.js";
@@ -12,3 +13,4 @@ export * from "./repositories/attestations.js";
 export * from "./repositories/disputes.js";
 export * from "./repositories/resolutions.js";
 export * from "./repositories/cursors.js";
+

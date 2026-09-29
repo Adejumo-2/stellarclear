@@ -15,9 +15,10 @@ export class ObservationRepository {
     const sql = `
       INSERT INTO settlement_observations (
         network, case_id, observer, tx_hash, observed_ledger,
-        observation_commitment, asset, amount, destination, reference,
+        observation_commitment, observation_tx_hash, confirmed_at_ledger,
+        asset, amount, destination, reference,
         status, observed_at, created_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW())
       RETURNING *;
     `;
     const params = [
@@ -27,6 +28,8 @@ export class ObservationRepository {
       obs.tx_hash,
       obs.observed_ledger,
       obs.observation_commitment,
+      obs.observation_tx_hash ?? null,
+      obs.confirmed_at_ledger ?? null,
       obs.asset,
       obs.amount,
       obs.destination,

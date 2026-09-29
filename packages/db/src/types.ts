@@ -9,6 +9,7 @@ import type {
 export interface DbSettlementCase {
   id: string;
   network: string;
+  contract_id?: string | null;
   owner: string;
   counterparty?: string | null;
   trade_reference: string;
@@ -19,6 +20,15 @@ export interface DbSettlementCase {
   terms_commitment: string;
   expires_at_ledger: number;
   status: CaseStatus;
+  create_tx_hash?: string | null;
+  observation_tx_hash?: string | null;
+  reconciliation_tx_hash?: string | null;
+  attestation_tx_hash?: string | null;
+  dispute_tx_hash?: string | null;
+  resolution_tx_hash?: string | null;
+  finalization_tx_hash?: string | null;
+  submission_status?: "PENDING" | "SUBMITTED" | "CONFIRMED" | "FAILED" | null;
+  confirmed_at_ledger?: number | null;
   created_at_ledger?: number | null;
   finalized_at_ledger?: number | null;
   created_at: Date | string;
@@ -33,6 +43,8 @@ export interface DbSettlementObservation {
   tx_hash: string;
   observed_ledger: number;
   observation_commitment: string;
+  observation_tx_hash?: string | null;
+  confirmed_at_ledger?: number | null;
   asset: string;
   amount: string;
   destination: string;
@@ -48,6 +60,8 @@ export interface DbReconciliationResult {
   case_id: string;
   status: ReconciliationStatus;
   matched: boolean;
+  reconciliation_tx_hash?: string | null;
+  confirmed_at_ledger?: number | null;
   reconciled_at: Date | string;
   created_at?: Date | string;
 }

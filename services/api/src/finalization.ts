@@ -25,6 +25,21 @@ export class FinalizationService {
       throw new Error(`Case ${caseId} not found`);
     }
 
+    if (existingCase.status === "FINALIZED") {
+      return {
+        caseId,
+        status: "FINALIZED",
+        finalizationTxHash: existingCase.finalization_tx_hash ?? undefined,
+        finalizedAtLedger: existingCase.finalized_at_ledger
+          ? Number(existingCase.finalized_at_ledger)
+          : undefined,
+        finalizedAt:
+          typeof existingCase.updated_at === "string"
+            ? existingCase.updated_at
+            : new Date(existingCase.updated_at).toISOString(),
+      };
+    }
+
     if (existingCase.status !== "MATCHED" && existingCase.status !== "RESOLVED") {
       throw new Error(`Cannot finalize case with status ${existingCase.status}. Expected status: MATCHED or RESOLVED.`);
     }

@@ -8,3 +8,4 @@ export * from "./disputes.js";
 export * from "./finalization.js";
 export * from "./consistency.js";
 export * from "./audit.js";
+export * from "./idempotency.js";

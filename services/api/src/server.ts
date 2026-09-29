@@ -44,6 +44,7 @@ import {
 import { FinalizationService } from "./finalization.js";
 import { SettlementConsistencyChecker } from "./consistency.js";
 import { SettlementAuditService } from "./audit.js";
+import { IdempotencyManager } from "./idempotency.js";
 
 export interface InjectOptions {
   method: string;
@@ -66,6 +67,7 @@ export class ApiServer {
   public readonly finalizationService: FinalizationService;
   public readonly consistencyChecker: SettlementConsistencyChecker;
   public readonly auditService: SettlementAuditService;
+  public readonly idempotencyManager: IdempotencyManager;
 
   constructor(
     configInput: ApiConfigInput | ApiConfig,
@@ -117,16 +119,48 @@ export class ApiServer {
       this.config.contractId,
       this.config.network
     );
+    this.idempotencyManager = new IdempotencyManager();
   }
 
   /**
-   * Internal request dispatcher executing routing and middleware.
+   * Public request dispatcher with idempotency middleware.
    */
   public async handleRequest(req: HttpRequest): Promise<HttpResponse> {
-    const requestId = req.requestId || (req.headers["x-request-id"] as string) || generateUuid();
+    const rawIdempotency = req.headers["idempotency-key"] || req.headers["x-idempotency-key"];
+    const idempotencyKey =
+      typeof rawIdempotency === "string"
+        ? rawIdempotency
+        : Array.isArray(rawIdempotency)
+        ? rawIdempotency[0]
+        : undefined;
     const url = new URL(req.url, "http://localhost");
     const pathname = url.pathname;
     const method = req.method.toUpperCase();
+
+    if (idempotencyKey && method !== "GET") {
+      const cached = this.idempotencyManager.get(method, pathname, idempotencyKey);
+      if (cached) {
+        return cached;
+      }
+    }
+
+    const res = await this.dispatchRequest(req, url, pathname, method);
+    if (idempotencyKey && method !== "GET" && res.statusCode >= 200 && res.statusCode < 400) {
+      this.idempotencyManager.set(method, pathname, idempotencyKey, res);
+    }
+    return res;
+  }
+
+  /**
+   * Internal request dispatcher executing routing and handler logic.
+   */
+  private async dispatchRequest(
+    req: HttpRequest,
+    url: URL,
+    pathname: string,
+    method: string
+  ): Promise<HttpResponse> {
+    const requestId = req.requestId || (req.headers["x-request-id"] as string) || generateUuid();
 
     try {
       // 1. GET /health
@@ -546,6 +580,24 @@ export class ApiServer {
 
         const obs: ObservedSettlement = parsedBody.data.observation;
         const obsCommitment = computeObservationCommitment(obs);
+
+        const existingObs = await this.obsRepo.findByCaseId(caseId, this.config.network);
+        if (existingObs && existingObs.tx_hash.toLowerCase() === obs.txHash.toLowerCase()) {
+          return {
+            statusCode: 200,
+            headers: { "content-type": "application/json", "x-request-id": requestId },
+            body: {
+              caseId,
+              status: found.status,
+              txHash: existingObs.observation_tx_hash ?? existingObs.tx_hash,
+              observedAt:
+                typeof existingObs.observed_at === "string"
+                  ? existingObs.observed_at
+                  : existingObs.observed_at.toISOString(),
+            },
+          };
+        }
+
         const anchorResult = await this.anchorService.anchorObservation({
           observer: obs.destination,
           caseId,

@@ -6,16 +6,16 @@
   "description": "Open-source Stellar-native settlement evidence and reconciliation protocol",
   "workspaces": [
     "packages/*",
-    "services/*",
-    "apps/*"
+    "services/*"
   ],
   "scripts": {
     "build": "npm run --workspaces --if-present build",
-    "test": "npm run build && tsc -p tests/tsconfig.json && node --test tests/dist/**/*.test.js",
+    "test": "npm run build && tsc -p tests/tsconfig.json && node --test tests/dist/*.test.js tests/dist/**/*.test.js",
     "typecheck": "npm run --workspaces --if-present typecheck && tsc -p tests/tsconfig.json --noEmit",
-    "generate:bindings": "stellar contract bindings typescript --wasm ../stellarclear-contract/target/wasm32v1-none/release/settlement_registry.wasm --output-dir packages/settlement-registry --overwrite"
+    "generate:bindings": "stellar contract bindings typescript --wasm ${SETTLEMENT_REGISTRY_WASM:-../stellarclear-contract/target/wasm32v1-none/release/settlement_registry.wasm} --output-dir packages/settlement-registry --overwrite"
   },
   "devDependencies": {
     "typescript": "^5.7.3"
-  }
+  },
+  "license": "Apache-2.0"
 }

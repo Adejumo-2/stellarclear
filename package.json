@@ -1,0 +1,22 @@
+{
+  "name": "stellarclear-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Open-source Stellar-native settlement evidence and reconciliation protocol",
+  "workspaces": [
+    "packages/*",
+    "services/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "npm run --workspaces --if-present build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "npm run --workspaces --if-present typecheck",
+    "generate:bindings": "stellar contract bindings typescript --wasm ../stellarclear-contract/target/wasm32v1-none/release/settlement_registry.wasm --output-dir packages/settlement-registry --overwrite"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.7"
+  }
+}

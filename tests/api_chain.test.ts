@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { InMemoryDatabaseClient } from "@stellarclear/db";
-import { createApiServer, type ApiServer } from "@stellarclear/api";
+import { createApiServer, SorobanSettlementAnchor, type ApiServer } from "@stellarclear/api";
 import type { ExpectedSettlement, ObservedSettlement, ReconciliationResult } from "@stellarclear/schemas";
 import type { OnChainAnchorService } from "@stellarclear/api";
 import type { TransactionResult } from "@stellarclear/sdk";
@@ -9,12 +9,12 @@ import type { TransactionResult } from "@stellarclear/sdk";
 const TEST_CONTRACT_ID = "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM";
 const TEST_NETWORK = "testnet";
 
-class MockOnChainAnchor implements OnChainAnchorService {
+class MockOnChainAnchor extends SorobanSettlementAnchor {
   public caseCreatedCalls: ExpectedSettlement[] = [];
   public observationCalls: Array<{ observer: string; caseId: string; observation: ObservedSettlement }> = [];
   public reconciliationCalls: Array<{ observer: string; caseId: string; status: string; breakCode?: string }> = [];
 
-  public async anchorCaseCreation(terms: ExpectedSettlement): Promise<TransactionResult<void>> {
+  public override async anchorCaseCreation(terms: ExpectedSettlement): Promise<TransactionResult<void>> {
     this.caseCreatedCalls.push(terms);
     return {
       txHash: "0x_create_tx_" + terms.caseId.slice(0, 8),

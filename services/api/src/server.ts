@@ -35,6 +35,7 @@ import { validateApiConfig, type ApiConfig, type ApiConfigInput } from "./config
 import type { HttpRequest, HttpResponse } from "./types.js";
 import { SorobanSettlementAnchor, type OnChainAnchorService } from "./settlement.js";
 import { SorobanChainVerifier } from "./chain-verifier.js";
+import { AttestationService, SubmitAttestationRequestSchema } from "./attestations.js";
 
 export interface InjectOptions {
   method: string;
@@ -52,6 +53,7 @@ export class ApiServer {
   private attestationRepo: AttestationRepository;
   public readonly anchorService: OnChainAnchorService;
   public readonly chainVerifier: SorobanChainVerifier;
+  public readonly attestationService: AttestationService;
 
   constructor(
     configInput: ApiConfigInput | ApiConfig,
@@ -69,6 +71,12 @@ export class ApiServer {
     this.chainVerifier =
       chainVerifier ??
       new SorobanChainVerifier(undefined, this.config.contractId, this.config.network);
+    this.attestationService = new AttestationService(
+      this.caseRepo,
+      this.attestationRepo,
+      this.anchorService,
+      this.config.network
+    );
   }
 
   /**
@@ -464,6 +472,71 @@ export class ApiServer {
           headers: { "content-type": "application/json", "x-request-id": requestId },
           body: proof,
         };
+      }
+
+      // 8a. POST /v1/cases/:caseId/attest
+      const attestMatch = pathname.match(/^\/v1\/cases\/([a-zA-Z0-9_-]+)\/attest$/);
+      if (method === "POST" && attestMatch) {
+        const rawCaseId = attestMatch[1];
+        const parsedId = Bytes32HexSchema.safeParse(rawCaseId);
+        if (!parsedId.success) {
+          return this.errorResponse(400, "VALIDATION_ERROR", "Invalid case ID format", requestId);
+        }
+        const caseId = parsedId.data;
+        const parsedBody = SubmitAttestationRequestSchema.safeParse(req.body);
+        if (!parsedBody.success) {
+          return this.errorResponse(400, "VALIDATION_ERROR", parsedBody.error.message, requestId, parsedBody.error.issues);
+        }
+
+        try {
+          const result = await this.attestationService.submitAttestation(caseId, parsedBody.data);
+          return {
+            statusCode: 201,
+            headers: { "content-type": "application/json", "x-request-id": requestId },
+            body: {
+              ...result.attestation,
+              txHash: result.txHash,
+              recordedAt: new Date().toISOString(),
+            },
+          };
+        } catch (err: unknown) {
+          const message = (err as Error).message;
+          if (message.includes("not found")) {
+            return this.errorResponse(404, "NOT_FOUND", message, requestId);
+          }
+          if (message.includes("not the owner") || message.includes("not the counterparty")) {
+            return this.errorResponse(403, "FORBIDDEN", message, requestId);
+          }
+          throw err;
+        }
+      }
+
+      // 8b. GET /v1/cases/:caseId/attestations
+      const attestListMatch = pathname.match(/^\/v1\/cases\/([a-zA-Z0-9_-]+)\/attestations$/);
+      if (method === "GET" && attestListMatch) {
+        const rawCaseId = attestListMatch[1];
+        const parsedId = Bytes32HexSchema.safeParse(rawCaseId);
+        if (!parsedId.success) {
+          return this.errorResponse(400, "VALIDATION_ERROR", "Invalid case ID format", requestId);
+        }
+        const caseId = parsedId.data;
+        try {
+          const attestations = await this.attestationService.getAttestations(caseId);
+          return {
+            statusCode: 200,
+            headers: { "content-type": "application/json", "x-request-id": requestId },
+            body: {
+              caseId,
+              attestations,
+            },
+          };
+        } catch (err: unknown) {
+          const message = (err as Error).message;
+          if (message.includes("not found")) {
+            return this.errorResponse(404, "NOT_FOUND", message, requestId);
+          }
+          throw err;
+        }
       }
 
       // 9. POST /v1/proofs/verify

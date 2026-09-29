@@ -31,8 +31,9 @@ import {
   BreakRepository,
   AttestationRepository,
 } from "@stellarclear/db";
-import type { ApiConfig } from "./config.js";
+import { validateApiConfig, type ApiConfig, type ApiConfigInput } from "./config.js";
 import type { HttpRequest, HttpResponse } from "./types.js";
+import { SorobanSettlementAnchor, type OnChainAnchorService } from "./settlement.js";
 
 export interface InjectOptions {
   method: string;
@@ -42,21 +43,26 @@ export interface InjectOptions {
 }
 
 export class ApiServer {
+  public readonly config: ApiConfig;
   private caseRepo: CaseRepository;
   private obsRepo: ObservationRepository;
   private recRepo: ReconciliationRepository;
   private breakRepo: BreakRepository;
   private attestationRepo: AttestationRepository;
+  public readonly anchorService: OnChainAnchorService;
 
   constructor(
-    public readonly config: ApiConfig,
-    public readonly dbClient: IDatabaseClient
+    configInput: ApiConfigInput | ApiConfig,
+    public readonly dbClient: IDatabaseClient,
+    anchorService?: OnChainAnchorService
   ) {
+    this.config = validateApiConfig(configInput);
     this.caseRepo = new CaseRepository(dbClient);
     this.obsRepo = new ObservationRepository(dbClient);
     this.recRepo = new ReconciliationRepository(dbClient);
     this.breakRepo = new BreakRepository(dbClient);
     this.attestationRepo = new AttestationRepository(dbClient);
+    this.anchorService = anchorService ?? new SorobanSettlementAnchor();
   }
 
   /**
@@ -132,6 +138,8 @@ export class ApiServer {
           updated_at: now,
         });
 
+        const anchorResult = await this.anchorService.anchorCaseCreation(expected);
+
         return {
           statusCode: 201,
           headers: { "content-type": "application/json", "x-request-id": requestId },
@@ -139,6 +147,7 @@ export class ApiServer {
             caseId: expected.caseId,
             status: "OPEN",
             termsCommitment,
+            txHash: anchorResult.txHash,
             createdAt: now.toISOString(),
           },
         };
@@ -221,6 +230,11 @@ export class ApiServer {
         });
 
         await this.caseRepo.updateStatus(caseId, this.config.network, "OBSERVED");
+        const anchorResult = await this.anchorService.anchorObservation({
+          observer: obs.destination,
+          caseId,
+          observation: obs,
+        });
 
         return {
           statusCode: 200,
@@ -228,7 +242,7 @@ export class ApiServer {
           body: {
             caseId,
             status: "OBSERVED",
-            txHash: obs.txHash,
+            txHash: anchorResult.txHash,
             observedAt: obs.observedAt,
           },
         };
@@ -302,11 +316,20 @@ export class ApiServer {
         }
 
         await this.caseRepo.updateStatus(caseId, this.config.network, result.status);
+        const anchorResult = await this.anchorService.anchorReconciliation({
+          observer: expected.owner,
+          caseId,
+          status: result.status,
+          breakCode: result.breaks[0]?.code,
+        });
 
         return {
           statusCode: 200,
           headers: { "content-type": "application/json", "x-request-id": requestId },
-          body: result,
+          body: {
+            ...result,
+            txHash: anchorResult.txHash,
+          },
         };
       }
 
@@ -487,6 +510,10 @@ export class ApiServer {
   }
 }
 
-export function createApiServer(config: ApiConfig, dbClient: IDatabaseClient): ApiServer {
-  return new ApiServer(config, dbClient);
+export function createApiServer(
+  config: ApiConfigInput | ApiConfig,
+  dbClient: IDatabaseClient,
+  anchorService?: OnChainAnchorService
+): ApiServer {
+  return new ApiServer(config, dbClient, anchorService);
 }

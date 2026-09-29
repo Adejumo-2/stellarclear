@@ -42,6 +42,7 @@ import {
   SubmitResolutionRequestSchema,
 } from "./disputes.js";
 import { FinalizationService } from "./finalization.js";
+import { SettlementConsistencyChecker } from "./consistency.js";
 
 export interface InjectOptions {
   method: string;
@@ -62,6 +63,7 @@ export class ApiServer {
   public readonly attestationService: AttestationService;
   public readonly disputeService: DisputeService;
   public readonly finalizationService: FinalizationService;
+  public readonly consistencyChecker: SettlementConsistencyChecker;
 
   constructor(
     configInput: ApiConfigInput | ApiConfig,
@@ -93,6 +95,13 @@ export class ApiServer {
     this.finalizationService = new FinalizationService(
       this.caseRepo,
       this.anchorService,
+      this.config.network
+    );
+    this.consistencyChecker = new SettlementConsistencyChecker(
+      this.caseRepo,
+      this.obsRepo,
+      this.anchorService,
+      this.config.contractId,
       this.config.network
     );
   }
@@ -450,6 +459,31 @@ export class ApiServer {
             retrievedAt: new Date().toISOString(),
           },
         };
+      }
+
+      // 4c. GET /v1/cases/:caseId/consistency
+      const consistencyMatch = pathname.match(/^\/v1\/cases\/([a-zA-Z0-9_-]+)\/consistency$/);
+      if (method === "GET" && consistencyMatch) {
+        const rawCaseId = consistencyMatch[1];
+        const parsedId = Bytes32HexSchema.safeParse(rawCaseId);
+        if (!parsedId.success) {
+          return this.errorResponse(400, "VALIDATION_ERROR", "Invalid case ID format", requestId);
+        }
+        const caseId = parsedId.data;
+        try {
+          const result = await this.consistencyChecker.checkCaseConsistency(caseId);
+          return {
+            statusCode: 200,
+            headers: { "content-type": "application/json", "x-request-id": requestId },
+            body: result,
+          };
+        } catch (err: unknown) {
+          const message = (err as Error).message;
+          if (message.includes("not found")) {
+            return this.errorResponse(404, "NOT_FOUND", message, requestId);
+          }
+          throw err;
+        }
       }
 
       // 5. POST /v1/cases/:caseId/observe

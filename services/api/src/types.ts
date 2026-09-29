@@ -79,3 +79,32 @@ export interface CaseHistoryResponse {
   history: HistoryMilestone[];
   retrievedAt: string;
 }
+
+export type ConsistencyStatus =
+  | "CONSISTENT"
+  | "STALE_DATABASE"
+  | "STALE_CHAIN_REFERENCE"
+  | "COMMITMENT_MISMATCH"
+  | "STATE_MISMATCH"
+  | "MISSING_ONCHAIN_CASE";
+
+export interface ConsistencyCheckDetails {
+  termsCommitmentMatch: boolean;
+  observationCommitmentMatch: boolean;
+  statusMatch: boolean;
+  onChainCaseExists: boolean;
+  chainReferencePresent: boolean;
+  discrepancies: string[];
+}
+
+export interface CaseConsistencyResponse {
+  caseId: string;
+  contractId: string;
+  network: string;
+  consistencyStatus: ConsistencyStatus;
+  isConsistent: boolean;
+  databaseStatus?: string;
+  onChainStatus?: string;
+  details: ConsistencyCheckDetails;
+  checkedAt: string;
+}

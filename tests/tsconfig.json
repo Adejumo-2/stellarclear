@@ -5,7 +5,8 @@
     "rootDir": "./",
     "baseUrl": ".",
     "paths": {
-      "settlement-registry": ["../packages/settlement-registry/dist/index.d.ts"]
+      "settlement-registry": ["../packages/settlement-registry/dist/index.d.ts"],
+      "@stellarclear/schemas": ["../packages/schemas/dist/index.d.ts"]
     }
   },
   "include": ["./**/*.ts"]

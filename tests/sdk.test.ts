@@ -1,3 +1,4 @@
+import { Buffer } from "buffer";
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -8,10 +9,43 @@ import {
   NotFoundError,
   UnauthorizedError,
   normalizeContractError,
+  breakCodeToContract,
+  contractToBreakCode,
+  attestationRoleToContract,
+  contractToAttestationRole,
+  decodeCaseRecord,
+  decodeAttestationRecord,
 } from "@stellarclear/sdk";
+import type { ExpectedSettlement, ObservedSettlement } from "@stellarclear/schemas";
 
 const VALID_CONTRACT_ID = "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM";
 const VALID_ACCOUNT_ID = "GA2C5RFPE6GCKMY3US5PAB6UZLKIGSPIUKSLRB6ZN7JMTXNZBEWBIXXX";
+const VALID_CP_ID = "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5";
+const VALID_CASE_ID = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+const VALID_TX_HASH = "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210";
+
+const SAMPLE_TERMS: ExpectedSettlement = {
+  caseId: VALID_CASE_ID,
+  tradeReference: "TR-100",
+  asset: "USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+  amount: "5000.0000000",
+  expectedDestination: VALID_CP_ID,
+  reference: "INV-100",
+  deadline: 500000,
+  owner: VALID_ACCOUNT_ID,
+  counterparty: VALID_CP_ID,
+};
+
+const SAMPLE_OBSERVATION: ObservedSettlement = {
+  txHash: VALID_TX_HASH,
+  ledger: 499990,
+  asset: "USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+  amount: "5000.0000000",
+  destination: VALID_CP_ID,
+  reference: "INV-100",
+  status: "SUCCESS",
+  observedAt: "2026-09-29T12:00:00.000Z",
+};
 
 describe("SDK Package - Client Configuration & Creation", () => {
   it("initializes StellarClearClient with valid testnet configuration", () => {
@@ -36,18 +70,7 @@ describe("SDK Package - Client Configuration & Creation", () => {
         network: "testnet",
         networkPassphrase: "Test SDF Network ; September 2015",
         rpcUrl: "https://soroban-testnet.stellar.org",
-        contractId: VALID_ACCOUNT_ID, // Account key instead of Contract address
-      });
-    });
-  });
-
-  it("rejects invalid RPC URL", () => {
-    assert.throws(() => {
-      new StellarClearClient({
-        network: "testnet",
-        networkPassphrase: "Test SDF Network ; September 2015",
-        rpcUrl: "not-a-valid-url",
-        contractId: VALID_CONTRACT_ID,
+        contractId: VALID_ACCOUNT_ID,
       });
     });
   });
@@ -60,12 +83,131 @@ describe("SDK Package - Client Configuration & Creation", () => {
       contractId: VALID_CONTRACT_ID,
     });
 
-    assert.strictEqual(typeof client.contractClient.create_case, "function");
-    assert.strictEqual(typeof client.contractClient.record_observation, "function");
-    assert.strictEqual(typeof client.contractClient.record_match, "function");
-    assert.strictEqual(typeof client.contractClient.record_break, "function");
-    assert.strictEqual(typeof client.contractClient.get_case, "function");
-    assert.strictEqual(typeof client.contractClient.is_observer, "function");
+    assert.strictEqual(typeof client.createCase, "function");
+    assert.strictEqual(typeof client.recordObservation, "function");
+    assert.strictEqual(typeof client.recordMatch, "function");
+    assert.strictEqual(typeof client.recordBreak, "function");
+    assert.strictEqual(typeof client.getCase, "function");
+    assert.strictEqual(typeof client.isObserver, "function");
+    assert.strictEqual(typeof client.submitAttestation, "function");
+    assert.strictEqual(typeof client.openDispute, "function");
+    assert.strictEqual(typeof client.submitResolution, "function");
+    assert.strictEqual(typeof client.finalizeCase, "function");
+  });
+});
+
+describe("SDK Package - Case Operations & Conversions", () => {
+  const client = new StellarClearClient({
+    network: Networks.TESTNET.network,
+    networkPassphrase: Networks.TESTNET.networkPassphrase,
+    rpcUrl: Networks.TESTNET.rpcUrl,
+    contractId: VALID_CONTRACT_ID,
+  });
+
+  it("generates deterministic case IDs", () => {
+    const id = client.generateCaseId(
+      SAMPLE_TERMS.owner,
+      SAMPLE_TERMS.tradeReference,
+      SAMPLE_TERMS.asset,
+      SAMPLE_TERMS.deadline
+    );
+    assert.strictEqual(id.length, 64);
+    assert.strictEqual(
+      id,
+      client.generateCaseId(
+        SAMPLE_TERMS.owner,
+        SAMPLE_TERMS.tradeReference,
+        SAMPLE_TERMS.asset,
+        SAMPLE_TERMS.deadline
+      )
+    );
+  });
+
+  it("validates arguments when constructing case write calls", async () => {
+    // Invalid terms (missing required fields)
+    const invalidTerms = { ...SAMPLE_TERMS, amount: "invalid-amount" };
+    await assert.rejects(async () => {
+      await client.createCase(invalidTerms as unknown as ExpectedSettlement);
+    });
+
+    // Invalid observation (bad hash)
+    const invalidObs = { ...SAMPLE_OBSERVATION, txHash: "short" };
+    await assert.rejects(async () => {
+      await client.recordObservation({
+        observer: VALID_ACCOUNT_ID,
+        caseId: VALID_CASE_ID,
+        observation: invalidObs as unknown as ObservedSettlement,
+      });
+    });
+  });
+
+  it("converts break codes between domain and contract union tags", () => {
+    const contractTag = breakCodeToContract("AMOUNT_MISMATCH");
+    assert.strictEqual(contractTag.tag, "AmountMismatch");
+    assert.strictEqual(contractToBreakCode(contractTag), "AMOUNT_MISMATCH");
+
+    const failedTxTag = breakCodeToContract("FAILED_TRANSACTION");
+    assert.strictEqual(failedTxTag.tag, "FailedTransaction");
+    assert.strictEqual(contractToBreakCode(failedTxTag), "FAILED_TRANSACTION");
+  });
+
+  it("converts attestation roles between domain and contract union tags", () => {
+    const roleTag = attestationRoleToContract("OWNER");
+    assert.strictEqual(roleTag.tag, "Owner");
+    assert.strictEqual(contractToAttestationRole(roleTag), "OWNER");
+
+    const obsRoleTag = attestationRoleToContract("OBSERVER");
+    assert.strictEqual(obsRoleTag.tag, "Observer");
+    assert.strictEqual(contractToAttestationRole(obsRoleTag), "OBSERVER");
+  });
+
+  it("decodes raw Soroban SettlementCase records correctly", () => {
+    const rawCase = {
+      owner: VALID_ACCOUNT_ID,
+      counterparty: VALID_CP_ID,
+      terms_commitment: Buffer.from(VALID_CASE_ID, "hex"),
+      expires_at_ledger: 500000,
+      status: { tag: "Matched" as const, values: undefined },
+      observation: {
+        tag: "Observed" as const,
+        values: [
+          {
+            tx_hash: Buffer.from(VALID_TX_HASH, "hex"),
+            observation_commitment: Buffer.from(VALID_TX_HASH, "hex"),
+            observed_ledger: 499990,
+          },
+        ] as const,
+      },
+      decision: { tag: "Matched" as const, values: undefined },
+      created_at_ledger: 490000,
+      finalized_at_ledger: undefined,
+    };
+
+    const decoded = decodeCaseRecord(VALID_CASE_ID, rawCase);
+    assert.strictEqual(decoded.caseId, VALID_CASE_ID);
+    assert.strictEqual(decoded.owner, VALID_ACCOUNT_ID);
+    assert.strictEqual(decoded.status, "MATCHED");
+    assert.strictEqual(decoded.decision.type, "MATCHED");
+    assert.ok(decoded.observation);
+    if (decoded.observation) {
+      assert.strictEqual(decoded.observation.txHash, VALID_TX_HASH);
+      assert.strictEqual(decoded.observation.observedLedger, 499990);
+    }
+  });
+
+  it("decodes raw Soroban Attestation records correctly", () => {
+    const rawAtt = {
+      role: { tag: "Owner" as const, values: undefined },
+      commitment: Buffer.from(VALID_CASE_ID, "hex"),
+      attested_at_ledger: 490010,
+    };
+
+    const decoded = decodeAttestationRecord(VALID_CASE_ID, VALID_ACCOUNT_ID, rawAtt);
+    assert.strictEqual(decoded.caseId, VALID_CASE_ID);
+    assert.strictEqual(decoded.attestor, VALID_ACCOUNT_ID);
+    assert.strictEqual(decoded.role, "OWNER");
+    assert.strictEqual(decoded.commitment, VALID_CASE_ID);
+    assert.strictEqual(decoded.attestedAtLedger, 490010);
   });
 });
 

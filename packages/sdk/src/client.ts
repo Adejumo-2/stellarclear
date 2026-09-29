@@ -1,13 +1,42 @@
-import { Client as RegistryClient, rpc } from "settlement-registry";
+import { Buffer } from "buffer";
+import {
+  Client as RegistryClient,
+  contract,
+  rpc,
+  type SettlementCase,
+} from "settlement-registry";
+import {
+  ExpectedSettlementSchema,
+  ObservedSettlementSchema,
+  type ExpectedSettlement,
+  type ObservedSettlement,
+  type BreakCode,
+  type AttestationRole,
+} from "@stellarclear/schemas";
+import {
+  computeTermsCommitment,
+  computeTermsCommitmentBuffer,
+  computeObservationCommitment,
+  computeObservationCommitmentBuffer,
+  computeDeterministicCaseId,
+} from "@stellarclear/proof";
 import {
   validateConfig,
   type StellarClearConfig,
   type StellarClearConfigInput,
 } from "./config.js";
 import { normalizeContractError, type StellarClearError } from "./errors.js";
+import {
+  breakCodeToContract,
+  attestationRoleToContract,
+  decodeCaseRecord,
+  decodeAttestationRecord,
+} from "./helpers.js";
+import type { CaseRecord, AttestationRecord } from "./types.js";
 
 /**
- * Core StellarClear SDK client configured for interaction with Soroban SettlementRegistry.
+ * Core StellarClear SDK client providing high-level domain operations
+ * over the Soroban SettlementRegistry contract.
  */
 export class StellarClearClient {
   public readonly config: StellarClearConfig;
@@ -28,31 +57,304 @@ export class StellarClearClient {
     });
   }
 
-  /**
-   * Returns the configured contract ID.
-   */
   public get contractId(): string {
     return this.config.contractId;
   }
 
-  /**
-   * Returns the configured network identifier.
-   */
   public get network(): string {
     return this.config.network;
   }
 
-  /**
-   * Returns the network passphrase.
-   */
   public get networkPassphrase(): string {
     return this.config.networkPassphrase;
   }
 
-  /**
-   * Normalizes contract or RPC errors into domain-specific StellarClearError types.
-   */
   public normalizeError(err: unknown): StellarClearError {
     return normalizeContractError(err);
+  }
+
+  /**
+   * Helper to generate a deterministic 32-byte caseId from origin parameters.
+   */
+  public generateCaseId(
+    owner: string,
+    tradeReference: string,
+    asset: string,
+    deadline: number
+  ): string {
+    return computeDeterministicCaseId(owner, tradeReference, asset, deadline);
+  }
+
+  // ==========================================
+  // CASE WRITES
+  // ==========================================
+
+  /**
+   * Opens a new settlement case with terms commitment and expiry.
+   */
+  public async createCase(
+    terms: ExpectedSettlement,
+    options?: contract.MethodOptions
+  ): Promise<contract.AssembledTransaction<contract.Result<void, contract.ErrorMessage>>> {
+    const validated = ExpectedSettlementSchema.parse(terms);
+    const termsCommitmentBuffer = computeTermsCommitmentBuffer(validated);
+    const caseIdBuffer = Buffer.from(validated.caseId, "hex");
+
+    return this.contractClient.create_case(
+      {
+        case_id: caseIdBuffer,
+        owner: validated.owner,
+        counterparty: validated.counterparty,
+        terms_commitment: termsCommitmentBuffer,
+        expires_at_ledger: validated.deadline,
+      },
+      options
+    );
+  }
+
+  /**
+   * Records an observed settlement transaction for an open case.
+   */
+  public async recordObservation(
+    params: {
+      observer: string;
+      caseId: string;
+      observation: ObservedSettlement;
+    },
+    options?: contract.MethodOptions
+  ): Promise<contract.AssembledTransaction<contract.Result<void, contract.ErrorMessage>>> {
+    const validated = ObservedSettlementSchema.parse(params.observation);
+    const obsCommitmentBuffer = computeObservationCommitmentBuffer(validated);
+    const caseIdBuffer = Buffer.from(params.caseId, "hex");
+    const txHashBuffer = Buffer.from(validated.txHash, "hex");
+
+    return this.contractClient.record_observation(
+      {
+        observer: params.observer,
+        case_id: caseIdBuffer,
+        tx_hash: txHashBuffer,
+        observed_ledger: validated.ledger,
+        observation_commitment: obsCommitmentBuffer,
+      },
+      options
+    );
+  }
+
+  /**
+   * Records a matched reconciliation decision.
+   */
+  public async recordMatch(
+    params: { observer: string; caseId: string },
+    options?: contract.MethodOptions
+  ): Promise<contract.AssembledTransaction<contract.Result<void, contract.ErrorMessage>>> {
+    const caseIdBuffer = Buffer.from(params.caseId, "hex");
+    return this.contractClient.record_match(
+      {
+        observer: params.observer,
+        case_id: caseIdBuffer,
+      },
+      options
+    );
+  }
+
+  /**
+   * Records a reconciliation break decision with standardized break code.
+   */
+  public async recordBreak(
+    params: {
+      observer: string;
+      caseId: string;
+      breakCode: BreakCode;
+    },
+    options?: contract.MethodOptions
+  ): Promise<contract.AssembledTransaction<contract.Result<void, contract.ErrorMessage>>> {
+    const caseIdBuffer = Buffer.from(params.caseId, "hex");
+    const breakCodeTag = breakCodeToContract(params.breakCode);
+
+    return this.contractClient.record_break(
+      {
+        observer: params.observer,
+        case_id: caseIdBuffer,
+        break_code: breakCodeTag,
+      },
+      options
+    );
+  }
+
+  /**
+   * Submits a cryptographic attestation for an active settlement case.
+   */
+  public async submitAttestation(
+    params: {
+      caseId: string;
+      role: AttestationRole;
+      commitment: string | Buffer;
+    },
+    options?: contract.MethodOptions
+  ): Promise<contract.AssembledTransaction<contract.Result<void, contract.ErrorMessage>>> {
+    const caseIdBuffer = Buffer.from(params.caseId, "hex");
+    const commitmentBuffer =
+      typeof params.commitment === "string"
+        ? Buffer.from(params.commitment, "hex")
+        : params.commitment;
+    const roleTag = attestationRoleToContract(params.role);
+
+    return this.contractClient.submit_attestation(
+      {
+        case_id: caseIdBuffer,
+        role: roleTag,
+        commitment: commitmentBuffer,
+      },
+      options
+    );
+  }
+
+  /**
+   * Opens a dispute against a broken settlement case.
+   */
+  public async openDispute(
+    params: {
+      initiator: string;
+      caseId: string;
+      disputeCommitment: string | Buffer;
+    },
+    options?: contract.MethodOptions
+  ): Promise<contract.AssembledTransaction<contract.Result<void, contract.ErrorMessage>>> {
+    const caseIdBuffer = Buffer.from(params.caseId, "hex");
+    const commitmentBuffer =
+      typeof params.disputeCommitment === "string"
+        ? Buffer.from(params.disputeCommitment, "hex")
+        : params.disputeCommitment;
+
+    return this.contractClient.open_dispute(
+      {
+        initiator: params.initiator,
+        case_id: caseIdBuffer,
+        dispute_commitment: commitmentBuffer,
+      },
+      options
+    );
+  }
+
+  /**
+   * Submits a dispute resolution commitment.
+   */
+  public async submitResolution(
+    params: {
+      resolver: string;
+      caseId: string;
+      resolutionCommitment: string | Buffer;
+    },
+    options?: contract.MethodOptions
+  ): Promise<contract.AssembledTransaction<contract.Result<void, contract.ErrorMessage>>> {
+    const caseIdBuffer = Buffer.from(params.caseId, "hex");
+    const commitmentBuffer =
+      typeof params.resolutionCommitment === "string"
+        ? Buffer.from(params.resolutionCommitment, "hex")
+        : params.resolutionCommitment;
+
+    return this.contractClient.submit_resolution(
+      {
+        resolver: params.resolver,
+        case_id: caseIdBuffer,
+        resolution_commitment: commitmentBuffer,
+      },
+      options
+    );
+  }
+
+  /**
+   * Finalizes a matched or resolved settlement case.
+   */
+  public async finalizeCase(
+    caseId: string,
+    options?: contract.MethodOptions
+  ): Promise<contract.AssembledTransaction<contract.Result<void, contract.ErrorMessage>>> {
+    const caseIdBuffer = Buffer.from(caseId, "hex");
+    return this.contractClient.finalize_case({ case_id: caseIdBuffer }, options);
+  }
+
+  // ==========================================
+  // CASE READS
+  // ==========================================
+
+  /**
+   * Reads and decodes a settlement case by ID.
+   */
+  public async getCase(caseId: string, options?: contract.MethodOptions): Promise<CaseRecord> {
+    const caseIdBuffer = Buffer.from(caseId, "hex");
+    const tx = await this.contractClient.get_case({ case_id: caseIdBuffer }, options);
+    const caseData: SettlementCase = tx.result.unwrap();
+    return decodeCaseRecord(caseId, caseData);
+  }
+
+  /**
+   * Reads an attestation record by case ID and attestor address.
+   */
+  public async getAttestation(
+    caseId: string,
+    attestor: string,
+    options?: contract.MethodOptions
+  ): Promise<AttestationRecord | null> {
+    const caseIdBuffer = Buffer.from(caseId, "hex");
+    const tx = await this.contractClient.get_attestation(
+      {
+        case_id: caseIdBuffer,
+        attestor,
+      },
+      options
+    );
+    if (!tx.result) {
+      return null;
+    }
+    return decodeAttestationRecord(caseId, attestor, tx.result);
+  }
+
+  /**
+   * Checks whether an address is a registered observer in the registry.
+   */
+  public async isObserver(observer: string, options?: contract.MethodOptions): Promise<boolean> {
+    const tx = await this.contractClient.is_observer({ observer }, options);
+    return tx.result;
+  }
+
+  /**
+   * Reads resolution commitment for a case and resolver.
+   */
+  public async getResolution(
+    caseId: string,
+    resolver: string,
+    options?: contract.MethodOptions
+  ): Promise<string | null> {
+    const caseIdBuffer = Buffer.from(caseId, "hex");
+    const tx = await this.contractClient.get_resolution(
+      {
+        case_id: caseIdBuffer,
+        resolver,
+      },
+      options
+    );
+    if (!tx.result) {
+      return null;
+    }
+    return Buffer.from(tx.result).toString("hex").toLowerCase();
+  }
+
+  // ==========================================
+  // OBSERVER ADMINISTRATION
+  // ==========================================
+
+  public async addObserver(
+    observer: string,
+    options?: contract.MethodOptions
+  ): Promise<contract.AssembledTransaction<contract.Result<void, contract.ErrorMessage>>> {
+    return this.contractClient.add_observer({ observer }, options);
+  }
+
+  public async removeObserver(
+    observer: string,
+    options?: contract.MethodOptions
+  ): Promise<contract.AssembledTransaction<contract.Result<void, contract.ErrorMessage>>> {
+    return this.contractClient.remove_observer({ observer }, options);
   }
 }

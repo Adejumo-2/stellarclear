@@ -138,3 +138,32 @@ export interface CaseAuditHistoryResponse {
   events: AuditEventRecord[];
   generatedAt: string;
 }
+
+export type DependencyStatus = "up" | "down" | "degraded" | "simulated";
+
+export interface ReadinessComponentReport {
+  status: DependencyStatus;
+  details?: Record<string, unknown>;
+  error?: string;
+}
+
+export interface ReadinessResponse {
+  status: "ready" | "degraded" | "not_ready";
+  timestamp: string;
+  version: string;
+  network: string;
+  contractId: string;
+  services: {
+    database: ReadinessComponentReport;
+    sorobanRpc: ReadinessComponentReport;
+    settlementRegistry: ReadinessComponentReport;
+    indexer: ReadinessComponentReport;
+  };
+}
+
+export interface HealthResponse {
+  status: "ok" | "degraded";
+  timestamp: string;
+  version: string;
+  uptimeSeconds: number;
+}

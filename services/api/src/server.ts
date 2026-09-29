@@ -45,6 +45,7 @@ import { FinalizationService } from "./finalization.js";
 import { SettlementConsistencyChecker } from "./consistency.js";
 import { SettlementAuditService } from "./audit.js";
 import { IdempotencyManager } from "./idempotency.js";
+import { ReadinessChecker } from "./readiness.js";
 
 export interface InjectOptions {
   method: string;
@@ -68,6 +69,7 @@ export class ApiServer {
   public readonly consistencyChecker: SettlementConsistencyChecker;
   public readonly auditService: SettlementAuditService;
   public readonly idempotencyManager: IdempotencyManager;
+  public readonly readinessChecker: ReadinessChecker;
 
   constructor(
     configInput: ApiConfigInput | ApiConfig,
@@ -120,6 +122,7 @@ export class ApiServer {
       this.config.network
     );
     this.idempotencyManager = new IdempotencyManager();
+    this.readinessChecker = new ReadinessChecker(this.config, this.dbClient, this.anchorService);
   }
 
   /**
@@ -165,30 +168,22 @@ export class ApiServer {
     try {
       // 1. GET /health
       if (method === "GET" && pathname === "/health") {
+        const health = this.readinessChecker.getHealth();
         return {
           statusCode: 200,
           headers: { "content-type": "application/json", "x-request-id": requestId },
-          body: {
-            status: "ok",
-            timestamp: new Date().toISOString(),
-            version: "0.1.0",
-          },
+          body: health,
         };
       }
 
       // 2. GET /ready
       if (method === "GET" && pathname === "/ready") {
+        const ready = await this.readinessChecker.checkReadiness();
+        const statusCode = ready.status === "not_ready" ? 503 : 200;
         return {
-          statusCode: 200,
+          statusCode,
           headers: { "content-type": "application/json", "x-request-id": requestId },
-          body: {
-            status: "ok",
-            timestamp: new Date().toISOString(),
-            version: "0.1.0",
-            services: {
-              database: { status: "up" },
-            },
-          },
+          body: ready,
         };
       }
 

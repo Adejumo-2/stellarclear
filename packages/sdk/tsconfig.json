@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "baseUrl": ".",
+    "paths": {
+      "@stellarclear/schemas": ["../schemas/dist/index.d.ts"],
+      "@stellarclear/proof": ["../proof/dist/index.d.ts"],
+      "settlement-registry": ["../settlement-registry/dist/index.d.ts"]
+    }
+  },
+  "include": ["src/**/*"]
+}

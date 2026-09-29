@@ -34,6 +34,7 @@ import {
 import { validateApiConfig, type ApiConfig, type ApiConfigInput } from "./config.js";
 import type { HttpRequest, HttpResponse } from "./types.js";
 import { SorobanSettlementAnchor, type OnChainAnchorService } from "./settlement.js";
+import { SorobanChainVerifier } from "./chain-verifier.js";
 
 export interface InjectOptions {
   method: string;
@@ -50,11 +51,13 @@ export class ApiServer {
   private breakRepo: BreakRepository;
   private attestationRepo: AttestationRepository;
   public readonly anchorService: OnChainAnchorService;
+  public readonly chainVerifier: SorobanChainVerifier;
 
   constructor(
     configInput: ApiConfigInput | ApiConfig,
     public readonly dbClient: IDatabaseClient,
-    anchorService?: OnChainAnchorService
+    anchorService?: OnChainAnchorService,
+    chainVerifier?: SorobanChainVerifier
   ) {
     this.config = validateApiConfig(configInput);
     this.caseRepo = new CaseRepository(dbClient);
@@ -63,6 +66,9 @@ export class ApiServer {
     this.breakRepo = new BreakRepository(dbClient);
     this.attestationRepo = new AttestationRepository(dbClient);
     this.anchorService = anchorService ?? new SorobanSettlementAnchor();
+    this.chainVerifier =
+      chainVerifier ??
+      new SorobanChainVerifier(undefined, this.config.contractId, this.config.network);
   }
 
   /**
@@ -488,6 +494,29 @@ export class ApiServer {
         };
       }
 
+      // 10. POST /v1/proofs/verify/onchain
+      if (method === "POST" && pathname === "/v1/proofs/verify/onchain") {
+        const parsed = VerifyProofRequestSchema.safeParse(req.body);
+        if (!parsed.success) {
+          return this.errorResponse(400, "VALIDATION_ERROR", parsed.error.message, requestId, parsed.error.issues);
+        }
+
+        const { proof, termsDocument, observedDocument } = parsed.data;
+        const result = await this.chainVerifier.verifyOnChainProof({
+          proof,
+          termsDocument,
+          observedDocument,
+          expectedContractId: this.config.contractId,
+          expectedNetwork: this.config.network,
+        });
+
+        return {
+          statusCode: 200,
+          headers: { "content-type": "application/json", "x-request-id": requestId },
+          body: result,
+        };
+      }
+
       // 404 Route Not Found
       return this.errorResponse(404, "ROUTE_NOT_FOUND", `Cannot ${method} ${pathname}`, requestId);
     } catch (err: unknown) {
@@ -534,7 +563,8 @@ export class ApiServer {
 export function createApiServer(
   config: ApiConfigInput | ApiConfig,
   dbClient: IDatabaseClient,
-  anchorService?: OnChainAnchorService
+  anchorService?: OnChainAnchorService,
+  chainVerifier?: SorobanChainVerifier
 ): ApiServer {
-  return new ApiServer(config, dbClient, anchorService);
+  return new ApiServer(config, dbClient, anchorService, chainVerifier);
 }

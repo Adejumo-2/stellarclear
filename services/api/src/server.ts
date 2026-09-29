@@ -41,6 +41,7 @@ import {
   OpenDisputeRequestSchema,
   SubmitResolutionRequestSchema,
 } from "./disputes.js";
+import { FinalizationService } from "./finalization.js";
 
 export interface InjectOptions {
   method: string;
@@ -60,6 +61,7 @@ export class ApiServer {
   public readonly chainVerifier: SorobanChainVerifier;
   public readonly attestationService: AttestationService;
   public readonly disputeService: DisputeService;
+  public readonly finalizationService: FinalizationService;
 
   constructor(
     configInput: ApiConfigInput | ApiConfig,
@@ -84,6 +86,11 @@ export class ApiServer {
       this.config.network
     );
     this.disputeService = new DisputeService(
+      this.caseRepo,
+      this.anchorService,
+      this.config.network
+    );
+    this.finalizationService = new FinalizationService(
       this.caseRepo,
       this.anchorService,
       this.config.network
@@ -635,6 +642,34 @@ export class ApiServer {
           const message = (err as Error).message;
           if (message.includes("not found")) {
             return this.errorResponse(404, "NOT_FOUND", message, requestId);
+          }
+          throw err;
+        }
+      }
+
+      // 8f. POST /v1/cases/:caseId/finalize
+      const finalizeMatch = pathname.match(/^\/v1\/cases\/([a-zA-Z0-9_-]+)\/finalize$/);
+      if (method === "POST" && finalizeMatch) {
+        const rawCaseId = finalizeMatch[1];
+        const parsedId = Bytes32HexSchema.safeParse(rawCaseId);
+        if (!parsedId.success) {
+          return this.errorResponse(400, "VALIDATION_ERROR", "Invalid case ID format", requestId);
+        }
+        const caseId = parsedId.data;
+        try {
+          const result = await this.finalizationService.finalizeCase(caseId);
+          return {
+            statusCode: 200,
+            headers: { "content-type": "application/json", "x-request-id": requestId },
+            body: result,
+          };
+        } catch (err: unknown) {
+          const message = (err as Error).message;
+          if (message.includes("not found")) {
+            return this.errorResponse(404, "NOT_FOUND", message, requestId);
+          }
+          if (message.includes("Cannot finalize case") || message.includes("Expected status")) {
+            return this.errorResponse(400, "INVALID_STATE", message, requestId);
           }
           throw err;
         }

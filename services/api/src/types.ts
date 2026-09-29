@@ -108,3 +108,33 @@ export interface CaseConsistencyResponse {
   details: ConsistencyCheckDetails;
   checkedAt: string;
 }
+
+export type AuditEventType =
+  | "CASE_CREATED"
+  | "OBSERVED"
+  | "MATCHED"
+  | "BREAK_RECORDED"
+  | "ATTESTED"
+  | "DISPUTED"
+  | "RESOLVED"
+  | "FINALIZED";
+
+export interface AuditEventRecord {
+  event: AuditEventType;
+  status: string;
+  timestamp: string;
+  txHash?: string;
+  ledger?: number;
+  actor?: string;
+  payload?: unknown;
+}
+
+export interface CaseAuditHistoryResponse {
+  caseId: string;
+  contractId: string;
+  network: string;
+  currentStatus: string;
+  eventCount: number;
+  events: AuditEventRecord[];
+  generatedAt: string;
+}

@@ -43,6 +43,7 @@ import {
 } from "./disputes.js";
 import { FinalizationService } from "./finalization.js";
 import { SettlementConsistencyChecker } from "./consistency.js";
+import { SettlementAuditService } from "./audit.js";
 
 export interface InjectOptions {
   method: string;
@@ -64,6 +65,7 @@ export class ApiServer {
   public readonly disputeService: DisputeService;
   public readonly finalizationService: FinalizationService;
   public readonly consistencyChecker: SettlementConsistencyChecker;
+  public readonly auditService: SettlementAuditService;
 
   constructor(
     configInput: ApiConfigInput | ApiConfig,
@@ -100,6 +102,17 @@ export class ApiServer {
     this.consistencyChecker = new SettlementConsistencyChecker(
       this.caseRepo,
       this.obsRepo,
+      this.anchorService,
+      this.config.contractId,
+      this.config.network
+    );
+    this.auditService = new SettlementAuditService(
+      this.caseRepo,
+      this.obsRepo,
+      this.recRepo,
+      this.breakRepo,
+      this.attestationRepo,
+      this.disputeService,
       this.anchorService,
       this.config.contractId,
       this.config.network
@@ -472,6 +485,31 @@ export class ApiServer {
         const caseId = parsedId.data;
         try {
           const result = await this.consistencyChecker.checkCaseConsistency(caseId);
+          return {
+            statusCode: 200,
+            headers: { "content-type": "application/json", "x-request-id": requestId },
+            body: result,
+          };
+        } catch (err: unknown) {
+          const message = (err as Error).message;
+          if (message.includes("not found")) {
+            return this.errorResponse(404, "NOT_FOUND", message, requestId);
+          }
+          throw err;
+        }
+      }
+
+      // 4d. GET /v1/cases/:caseId/audit
+      const auditMatch = pathname.match(/^\/v1\/cases\/([a-zA-Z0-9_-]+)\/audit$/);
+      if (method === "GET" && auditMatch) {
+        const rawCaseId = auditMatch[1];
+        const parsedId = Bytes32HexSchema.safeParse(rawCaseId);
+        if (!parsedId.success) {
+          return this.errorResponse(400, "VALIDATION_ERROR", "Invalid case ID format", requestId);
+        }
+        const caseId = parsedId.data;
+        try {
+          const result = await this.auditService.getAuditHistory(caseId);
           return {
             statusCode: 200,
             headers: { "content-type": "application/json", "x-request-id": requestId },

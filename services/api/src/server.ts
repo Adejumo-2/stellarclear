@@ -236,6 +236,222 @@ export class ApiServer {
         };
       }
 
+      // 4a. GET /v1/cases/:caseId/onchain
+      const onChainMatch = pathname.match(/^\/v1\/cases\/([a-zA-Z0-9_-]+)\/onchain$/);
+      if (method === "GET" && onChainMatch) {
+        const rawCaseId = onChainMatch[1];
+        const parsedId = Bytes32HexSchema.safeParse(rawCaseId);
+        if (!parsedId.success) {
+          return this.errorResponse(400, "VALIDATION_ERROR", "Invalid case ID format", requestId);
+        }
+        const caseId = parsedId.data;
+        const found = await this.caseRepo.findById(caseId, this.config.network);
+        const onChainCase = await this.anchorService.getOnChainCase(caseId);
+
+        if (!found && !onChainCase) {
+          return this.errorResponse(404, "NOT_FOUND", `Case ${caseId} not found on-chain or in database`, requestId);
+        }
+
+        const now = new Date().toISOString();
+        if (onChainCase) {
+          return {
+            statusCode: 200,
+            headers: { "content-type": "application/json", "x-request-id": requestId },
+            body: {
+              caseId,
+              contractId: this.config.contractId,
+              network: this.config.network,
+              status: onChainCase.status,
+              owner: onChainCase.owner,
+              counterparty: onChainCase.counterparty,
+              termsCommitment: onChainCase.termsCommitment,
+              expiresAtLedger: onChainCase.expiresAtLedger,
+              createdAtLedger: onChainCase.createdAtLedger,
+              finalizedAtLedger: onChainCase.finalizedAtLedger,
+              observation: onChainCase.observation,
+              decision: onChainCase.decision,
+              transactionHashes: {
+                createTxHash: found?.create_tx_hash ?? undefined,
+                observationTxHash: found?.observation_tx_hash ?? undefined,
+                reconciliationTxHash: found?.reconciliation_tx_hash ?? undefined,
+                attestationTxHash: found?.attestation_tx_hash ?? undefined,
+                disputeTxHash: found?.dispute_tx_hash ?? undefined,
+                resolutionTxHash: found?.resolution_tx_hash ?? undefined,
+                finalizationTxHash: found?.finalization_tx_hash ?? undefined,
+              },
+              fetchedAt: now,
+            },
+          };
+        } else {
+          return {
+            statusCode: 200,
+            headers: { "content-type": "application/json", "x-request-id": requestId },
+            body: {
+              caseId,
+              contractId: found!.contract_id ?? this.config.contractId,
+              network: found!.network,
+              status: found!.status,
+              owner: found!.owner,
+              counterparty: found!.counterparty ?? undefined,
+              termsCommitment: found!.terms_commitment,
+              expiresAtLedger: Number(found!.expires_at_ledger),
+              createdAtLedger: found!.created_at_ledger ? Number(found!.created_at_ledger) : undefined,
+              finalizedAtLedger: found!.finalized_at_ledger ? Number(found!.finalized_at_ledger) : undefined,
+              transactionHashes: {
+                createTxHash: found!.create_tx_hash ?? undefined,
+                observationTxHash: found!.observation_tx_hash ?? undefined,
+                reconciliationTxHash: found!.reconciliation_tx_hash ?? undefined,
+                attestationTxHash: found!.attestation_tx_hash ?? undefined,
+                disputeTxHash: found!.dispute_tx_hash ?? undefined,
+                resolutionTxHash: found!.resolution_tx_hash ?? undefined,
+                finalizationTxHash: found!.finalization_tx_hash ?? undefined,
+              },
+              decision: {
+                type: found!.status === "MATCHED" ? "MATCHED" : found!.status === "BREAK" ? "BREAK" : "NONE",
+              },
+              fetchedAt: now,
+            },
+          };
+        }
+      }
+
+      // 4b. GET /v1/cases/:caseId/history
+      const historyMatch = pathname.match(/^\/v1\/cases\/([a-zA-Z0-9_-]+)\/history$/);
+      if (method === "GET" && historyMatch) {
+        const rawCaseId = historyMatch[1];
+        const parsedId = Bytes32HexSchema.safeParse(rawCaseId);
+        if (!parsedId.success) {
+          return this.errorResponse(400, "VALIDATION_ERROR", "Invalid case ID format", requestId);
+        }
+        const caseId = parsedId.data;
+        const found = await this.caseRepo.findById(caseId, this.config.network);
+        if (!found) {
+          return this.errorResponse(404, "NOT_FOUND", `Case ${caseId} not found`, requestId);
+        }
+
+        const obs = await this.obsRepo.findByCaseId(caseId, this.config.network);
+        const rec = await this.recRepo.findByCaseId(caseId, this.config.network);
+        const rawAttestations = await this.attestationRepo.listByCaseId(caseId, this.config.network);
+        const disputeInfo = await this.disputeService.getDispute(caseId).catch(() => null);
+
+        const history: unknown[] = [];
+
+        // 1. Case Created
+        history.push({
+          event: "CASE_CREATED",
+          status: "OPEN",
+          timestamp: new Date(found.created_at).toISOString(),
+          ledger: found.created_at_ledger ? Number(found.created_at_ledger) : undefined,
+          txHash: found.create_tx_hash ?? undefined,
+          actor: found.owner,
+          details: {
+            tradeReference: found.trade_reference,
+            asset: found.asset,
+            amount: found.amount,
+            termsCommitment: found.terms_commitment,
+          },
+        });
+
+        // 2. Observation
+        if (obs) {
+          history.push({
+            event: "OBSERVED",
+            status: "OBSERVED",
+            timestamp: typeof obs.observed_at === "string" ? obs.observed_at : obs.observed_at.toISOString(),
+            ledger: Number(obs.observed_ledger),
+            txHash: obs.tx_hash,
+            details: {
+              asset: obs.asset,
+              amount: obs.amount,
+              destination: obs.destination,
+              status: obs.status,
+            },
+          });
+        }
+
+        // 3. Reconciliation
+        if (rec) {
+          history.push({
+            event: rec.matched ? "MATCHED" : "BREAK_RECORDED",
+            status: rec.status,
+            timestamp: typeof rec.reconciled_at === "string" ? rec.reconciled_at : rec.reconciled_at.toISOString(),
+            ledger: rec.confirmed_at_ledger ? Number(rec.confirmed_at_ledger) : undefined,
+            txHash: rec.reconciliation_tx_hash ?? undefined,
+            details: {
+              matched: rec.matched,
+            },
+          });
+        }
+
+        // 4. Attestations
+        for (const att of rawAttestations) {
+          history.push({
+            event: "ATTESTED",
+            status: found.status,
+            timestamp: typeof att.created_at === "string" ? att.created_at : att.created_at ? new Date(att.created_at).toISOString() : new Date().toISOString(),
+            ledger: Number(att.attested_at_ledger),
+            txHash: found.attestation_tx_hash ?? undefined,
+            actor: att.attestor,
+            details: {
+              role: att.role,
+              commitment: att.commitment,
+            },
+          });
+        }
+
+        // 5. Dispute & Resolution
+        if (disputeInfo?.dispute) {
+          history.push({
+            event: "DISPUTED",
+            status: "DISPUTED",
+            timestamp: disputeInfo.dispute.openedAt,
+            txHash: disputeInfo.dispute.disputeTxHash,
+            actor: disputeInfo.dispute.initiator,
+            details: {
+              reason: disputeInfo.dispute.reason,
+              disputeCommitment: disputeInfo.dispute.disputeCommitment,
+            },
+          });
+        }
+        if (disputeInfo?.resolution) {
+          history.push({
+            event: "RESOLVED",
+            status: "RESOLVED",
+            timestamp: disputeInfo.resolution.resolvedAt,
+            txHash: disputeInfo.resolution.resolutionTxHash,
+            actor: disputeInfo.resolution.resolver,
+            details: {
+              resolutionType: disputeInfo.resolution.resolutionType,
+              resolutionCommitment: disputeInfo.resolution.resolutionCommitment,
+            },
+          });
+        }
+
+        // 6. Finalization
+        if (found.status === "FINALIZED") {
+          history.push({
+            event: "FINALIZED",
+            status: "FINALIZED",
+            timestamp: new Date(found.updated_at).toISOString(),
+            ledger: found.finalized_at_ledger ? Number(found.finalized_at_ledger) : undefined,
+            txHash: found.finalization_tx_hash ?? undefined,
+          });
+        }
+
+        return {
+          statusCode: 200,
+          headers: { "content-type": "application/json", "x-request-id": requestId },
+          body: {
+            caseId,
+            currentStatus: found.status,
+            contractId: found.contract_id ?? this.config.contractId,
+            network: found.network,
+            history,
+            retrievedAt: new Date().toISOString(),
+          },
+        };
+      }
+
       // 5. POST /v1/cases/:caseId/observe
       const observeMatch = pathname.match(/^\/v1\/cases\/([a-zA-Z0-9_-]+)\/observe$/);
       if (method === "POST" && observeMatch) {

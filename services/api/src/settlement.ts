@@ -5,7 +5,7 @@ import type {
   ReconciliationStatus,
   AttestationRole,
 } from "@stellarclear/schemas";
-import type { SettlementRegistryOperations, TransactionResult } from "@stellarclear/sdk";
+import type { SettlementRegistryOperations, TransactionResult, CaseRecord, AttestationRecord } from "@stellarclear/sdk";
 
 export interface OnChainAnchorService {
   anchorCaseCreation(terms: ExpectedSettlement): Promise<TransactionResult<void>>;
@@ -39,6 +39,9 @@ export interface OnChainAnchorService {
   anchorFinalization(params: {
     caseId: string;
   }): Promise<TransactionResult<void>>;
+  getOnChainCase(caseId: string): Promise<CaseRecord | null>;
+  getOnChainAttestation(caseId: string, attestor: string): Promise<AttestationRecord | null>;
+  getOnChainResolution(caseId: string, resolver: string): Promise<string | null>;
 }
 
 export class SorobanSettlementAnchor implements OnChainAnchorService {
@@ -157,5 +160,38 @@ export class SorobanSettlementAnchor implements OnChainAnchorService {
       };
     }
     return this.registryOps.finalizeCase(params.caseId);
+  }
+
+  public async getOnChainCase(caseId: string): Promise<CaseRecord | null> {
+    if (!this.registryOps) {
+      return null;
+    }
+    try {
+      return await this.registryOps.getCase(caseId);
+    } catch {
+      return null;
+    }
+  }
+
+  public async getOnChainAttestation(caseId: string, attestor: string): Promise<AttestationRecord | null> {
+    if (!this.registryOps) {
+      return null;
+    }
+    try {
+      return await this.registryOps.getAttestation(caseId, attestor);
+    } catch {
+      return null;
+    }
+  }
+
+  public async getOnChainResolution(caseId: string, resolver: string): Promise<string | null> {
+    if (!this.registryOps) {
+      return null;
+    }
+    try {
+      return await this.registryOps.getResolution(caseId, resolver);
+    } catch {
+      return null;
+    }
   }
 }

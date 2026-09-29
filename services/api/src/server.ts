@@ -9,11 +9,19 @@ function generateUuid(): string {
 import {
   CreateCaseRequestSchema,
   SubmitObservationRequestSchema,
+  VerifyProofRequestSchema,
   Bytes32HexSchema,
   type ExpectedSettlement,
   type ObservedSettlement,
+  type Attestation,
+  type ReconciliationStatus,
 } from "@stellarclear/schemas";
-import { computeTermsCommitment } from "@stellarclear/proof";
+import {
+  computeTermsCommitment,
+  computeObservationCommitment,
+  createSettlementProof,
+  verifySettlementProof,
+} from "@stellarclear/proof";
 import { reconcileSettlement } from "@stellarclear/matcher";
 import type { IDatabaseClient } from "@stellarclear/db";
 import {
@@ -21,6 +29,7 @@ import {
   ObservationRepository,
   ReconciliationRepository,
   BreakRepository,
+  AttestationRepository,
 } from "@stellarclear/db";
 import type { ApiConfig } from "./config.js";
 import type { HttpRequest, HttpResponse } from "./types.js";
@@ -37,6 +46,7 @@ export class ApiServer {
   private obsRepo: ObservationRepository;
   private recRepo: ReconciliationRepository;
   private breakRepo: BreakRepository;
+  private attestationRepo: AttestationRepository;
 
   constructor(
     public readonly config: ApiConfig,
@@ -46,6 +56,7 @@ export class ApiServer {
     this.obsRepo = new ObservationRepository(dbClient);
     this.recRepo = new ReconciliationRepository(dbClient);
     this.breakRepo = new BreakRepository(dbClient);
+    this.attestationRepo = new AttestationRepository(dbClient);
   }
 
   /**
@@ -193,19 +204,20 @@ export class ApiServer {
         }
 
         const obs: ObservedSettlement = parsedBody.data.observation;
+        const obsCommitment = computeObservationCommitment(obs);
         await this.obsRepo.insert({
           network: this.config.network,
           case_id: caseId,
           observer: obs.destination,
           tx_hash: obs.txHash,
           observed_ledger: obs.ledger,
-          observation_commitment: obs.txHash,
+          observation_commitment: obsCommitment,
           asset: obs.asset,
           amount: obs.amount,
           destination: obs.destination,
           reference: obs.reference ?? null,
           status: obs.status,
-          observed_at: new Date(obs.observedAt),
+          observed_at: obs.observedAt,
         });
 
         await this.caseRepo.updateStatus(caseId, this.config.network, "OBSERVED");
@@ -259,7 +271,7 @@ export class ApiServer {
               destination: obs.destination,
               reference: obs.reference ?? undefined,
               status: obs.status,
-              observedAt: new Date(obs.observed_at).toISOString(),
+              observedAt: typeof obs.observed_at === "string" ? obs.observed_at : obs.observed_at.toISOString(),
             }
           : undefined;
 
@@ -327,6 +339,107 @@ export class ApiServer {
               observedValue: b.observed_value ?? undefined,
               message: b.message,
             })),
+          },
+        };
+      }
+
+      // 8. GET /v1/cases/:caseId/proof
+      const proofMatch = pathname.match(/^\/v1\/cases\/([a-zA-Z0-9_-]+)\/proof$/);
+      if (method === "GET" && proofMatch) {
+        const rawCaseId = proofMatch[1];
+        const parsedId = Bytes32HexSchema.safeParse(rawCaseId);
+        if (!parsedId.success) {
+          return this.errorResponse(400, "VALIDATION_ERROR", "Invalid case ID format", requestId);
+        }
+
+        const caseId = parsedId.data;
+        const found = await this.caseRepo.findById(caseId, this.config.network);
+        if (!found) {
+          return this.errorResponse(404, "NOT_FOUND", `Case ${caseId} not found`, requestId);
+        }
+
+        const obs = await this.obsRepo.findByCaseId(caseId, this.config.network);
+        if (!obs) {
+          return this.errorResponse(400, "PROOF_NOT_AVAILABLE", `Observation not recorded yet for case ${caseId}`, requestId);
+        }
+
+        const rawAttestations = await this.attestationRepo.listByCaseId(caseId, this.config.network);
+        const attestations: Attestation[] = rawAttestations.map((a) => ({
+          caseId: a.case_id,
+          role: a.role as "OWNER" | "COUNTERPARTY" | "OBSERVER",
+          attestor: a.attestor,
+          commitment: a.commitment,
+          attestedAtLedger: Number(a.attested_at_ledger),
+        }));
+
+        const expected: ExpectedSettlement = {
+          caseId: found.id,
+          tradeReference: found.trade_reference,
+          asset: found.asset,
+          amount: found.amount,
+          expectedDestination: found.expected_destination,
+          reference: found.reference ?? undefined,
+          deadline: Number(found.expires_at_ledger),
+          owner: found.owner,
+          counterparty: found.counterparty ?? undefined,
+        };
+
+        const observed: ObservedSettlement = {
+          txHash: obs.tx_hash,
+          ledger: Number(obs.observed_ledger),
+          asset: obs.asset,
+          amount: obs.amount,
+          destination: obs.destination,
+          reference: obs.reference ?? undefined,
+          status: obs.status,
+          observedAt: typeof obs.observed_at === "string" ? obs.observed_at : obs.observed_at.toISOString(),
+        };
+
+        const resultStatus: ReconciliationStatus = found.status === "BREAK" ? "BREAK" : "MATCHED";
+        const finalizedLedger = Number(found.finalized_at_ledger ?? obs.observed_ledger ?? found.expires_at_ledger);
+
+        const proof = createSettlementProof({
+          caseId,
+          terms: expected,
+          observation: observed,
+          finalizedLedger,
+          result: resultStatus,
+          attestations,
+          contractId: this.config.contractId,
+          network: this.config.network,
+        });
+
+        return {
+          statusCode: 200,
+          headers: { "content-type": "application/json", "x-request-id": requestId },
+          body: proof,
+        };
+      }
+
+      // 9. POST /v1/proofs/verify
+      if (method === "POST" && pathname === "/v1/proofs/verify") {
+        const parsed = VerifyProofRequestSchema.safeParse(req.body);
+        if (!parsed.success) {
+          return this.errorResponse(400, "VALIDATION_ERROR", parsed.error.message, requestId, parsed.error.issues);
+        }
+
+        const { proof, termsDocument, observedDocument } = parsed.data;
+        const verification = verifySettlementProof(proof, {
+          terms: termsDocument,
+          observation: observedDocument,
+          expectedContractId: this.config.contractId,
+          expectedNetwork: this.config.network,
+        });
+
+        return {
+          statusCode: 200,
+          headers: { "content-type": "application/json", "x-request-id": requestId },
+          body: {
+            valid: verification.valid,
+            reason: verification.reason,
+            recomputedTermsCommitment: verification.recomputedTermsCommitment,
+            recomputedObservationCommitment: verification.recomputedObservationCommitment,
+            verifiedAt: new Date().toISOString(),
           },
         };
       }

@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "baseUrl": ".",
+    "paths": {
+      "@stellarclear/schemas": ["../../packages/schemas/dist/index.d.ts"],
+      "@stellarclear/proof": ["../../packages/proof/dist/index.d.ts"],
+      "@stellarclear/sdk": ["../../packages/sdk/dist/index.d.ts"],
+      "@stellarclear/db": ["../../packages/db/dist/index.d.ts"],
+      "@stellarclear/matcher": ["../../services/matcher/dist/index.d.ts"],
+      "settlement-registry": ["../../packages/settlement-registry/dist/index.d.ts"]
+    }
+  },
+  "include": ["src/**/*"]
+}

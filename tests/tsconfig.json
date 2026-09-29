@@ -9,7 +9,8 @@
       "@stellarclear/schemas": ["../packages/schemas/dist/index.d.ts"],
       "@stellarclear/proof": ["../packages/proof/dist/index.d.ts"],
       "@stellarclear/sdk": ["../packages/sdk/dist/index.d.ts"],
-      "@stellarclear/db": ["../packages/db/dist/index.d.ts"]
+      "@stellarclear/db": ["../packages/db/dist/index.d.ts"],
+      "@stellarclear/indexer": ["../services/indexer/dist/index.d.ts"]
     }
   },
   "include": ["./**/*.ts"]

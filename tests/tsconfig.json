@@ -1,0 +1,12 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./",
+    "baseUrl": ".",
+    "paths": {
+      "settlement-registry": ["../packages/settlement-registry/dist/index.d.ts"]
+    }
+  },
+  "include": ["./**/*.ts"]
+}

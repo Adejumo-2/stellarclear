@@ -33,6 +33,7 @@ Comprehensive guides and technical documentation are available in the [`docs/`](
 - [Operations & Monitoring Guide](./docs/operations.md) — Health/readiness probes, consistency checks, audit histories, and idempotency.
 - [Troubleshooting & Break Remediation](./docs/troubleshooting.md) — Break diagnoses, Soroban contract error codes, and indexer resynchronization.
 - [Integration Verification Guide](./docs/integration-verification.md) — Test suite layout, running live Soroban lifecycles, and verification procedures.
+- [Release Readiness Guide](./docs/release-readiness.md) — Pre-flight release checks, CI verification pipeline, and promotion checklist.
 
 ---
 
@@ -87,6 +88,9 @@ npm run test:unit         # Unit tests (schemas, proof, matcher, db, sdk)
 npm run test:api          # API endpoints & lifecycle verification
 npm run test:indexer      # Indexer & event synchronization
 npm run test:integration  # Live Soroban contract integration tests
+
+# Run full pre-release verification
+npm run verify:release
 ```
 
 ---

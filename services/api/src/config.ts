@@ -18,3 +18,15 @@ export function validateApiConfig(input: ApiConfigInput): ApiConfig {
   return ApiConfigSchema.parse(input);
 }
 
+export function loadApiConfigFromEnv(env: Record<string, string | undefined> = {}): ApiConfig {
+  return ApiConfigSchema.parse({
+    port: env["API_PORT"] ? parseInt(env["API_PORT"], 10) : 3000,
+    host: env["API_HOST"] || "0.0.0.0",
+    network: env["STELLAR_NETWORK"] || "testnet",
+    databaseUrl: env["DATABASE_URL"] || "postgres://localhost:5432/stellarclear_db",
+    contractId: env["STELLAR_CONTRACT_ID"] || "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+    rpcUrl: env["STELLAR_RPC_URL"] || "https://soroban-testnet.stellar.org",
+    networkPassphrase: env["STELLAR_NETWORK_PASSPHRASE"] || "Test SDF Network ; September 2015",
+    enableAnchoring: env["ENABLE_ANCHORING"] === "true" || env["ENABLE_ANCHORING"] === "1",
+  });
+}

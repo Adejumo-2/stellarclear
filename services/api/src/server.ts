@@ -626,6 +626,7 @@ export class ApiServer {
           body: {
             caseId,
             status: "OBSERVED",
+            observationCommitment: obsCommitment,
             txHash: anchorResult.txHash,
             observedAt: obs.observedAt,
           },

@@ -32,7 +32,8 @@ import {
   AttestationRepository,
 } from "@stellarclear/db";
 import { validateApiConfig, type ApiConfig, type ApiConfigInput } from "./config.js";
-import type { HttpRequest, HttpResponse } from "./types.js";
+import type { HttpRequest, HttpResponse, VersionResponse } from "./types.js";
+import { SETTLEMENT_REGISTRY_RELEASE, verifyContractReleaseCompatibility } from "@stellarclear/sdk";
 import { SorobanSettlementAnchor, type OnChainAnchorService } from "./settlement.js";
 import { SorobanChainVerifier } from "./chain-verifier.js";
 import { AttestationService, SubmitAttestationRequestSchema } from "./attestations.js";
@@ -222,6 +223,33 @@ export class ApiServer {
           statusCode,
           headers: { "content-type": "application/json", "x-request-id": requestId },
           body: diagnostics,
+        };
+      }
+
+      // 2c. GET /v1/version or /version
+      if (method === "GET" && (pathname === "/v1/version" || pathname === "/version")) {
+        const compatibility = verifyContractReleaseCompatibility(this.config.network, this.config.contractId);
+        const versionResponse: VersionResponse = {
+          protocol: "STELLARCLEAR",
+          version: "0.1.0",
+          releaseTag: "v0.1.0",
+          contract: {
+            name: SETTLEMENT_REGISTRY_RELEASE.name,
+            version: SETTLEMENT_REGISTRY_RELEASE.version,
+            releaseTag: SETTLEMENT_REGISTRY_RELEASE.releaseTag,
+            wasmHash: SETTLEMENT_REGISTRY_RELEASE.wasmHash,
+            specVersion: SETTLEMENT_REGISTRY_RELEASE.specVersion,
+            contractId: this.config.contractId,
+            network: this.config.network,
+            compatible: compatibility.compatible,
+            compatibilityReason: compatibility.reason,
+          },
+          features: SETTLEMENT_REGISTRY_RELEASE.features,
+        };
+        return {
+          statusCode: 200,
+          headers: { "content-type": "application/json", "x-request-id": requestId },
+          body: versionResponse,
         };
       }
 

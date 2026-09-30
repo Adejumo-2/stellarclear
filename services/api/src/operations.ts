@@ -1,5 +1,6 @@
 import type { IDatabaseClient } from "@stellarclear/db";
 import { CaseRepository, ObservationRepository, ReconciliationRepository, BreakRepository, AttestationRepository } from "@stellarclear/db";
+import { SETTLEMENT_REGISTRY_RELEASE, verifyContractReleaseCompatibility } from "@stellarclear/sdk";
 import type { ApiConfig } from "./config.js";
 import type { OnChainAnchorService } from "./settlement.js";
 
@@ -37,12 +38,31 @@ export interface SettlementPipelineMetrics {
   finalizedCases: number;
 }
 
+export interface ReleaseDiagnostics {
+  protocol: string;
+  version: string;
+  releaseTag: string;
+  contract: {
+    name: string;
+    version: string;
+    releaseTag: string;
+    wasmHash: string;
+    specVersion: number;
+    contractId: string;
+    network: string;
+    compatible: boolean;
+    compatibilityReason?: string;
+  };
+  features: readonly string[];
+}
+
 export interface SettlementDiagnosticsResponse {
   status: "healthy" | "degraded" | "unhealthy";
   timestamp: string;
   uptimeSeconds: number;
   version: string;
   environment: string;
+  release: ReleaseDiagnostics;
   database: DatabaseDiagnostics;
   contract: ContractDiagnostics;
   indexing: IndexingDiagnostics;
@@ -163,10 +183,29 @@ export class SettlementDiagnosticsService {
       pendingEventsCount: 0,
     };
 
+    const compatibility = verifyContractReleaseCompatibility(this.config.network, this.config.contractId);
+    const release: ReleaseDiagnostics = {
+      protocol: "STELLARCLEAR",
+      version: "0.1.0",
+      releaseTag: "v0.1.0",
+      contract: {
+        name: SETTLEMENT_REGISTRY_RELEASE.name,
+        version: SETTLEMENT_REGISTRY_RELEASE.version,
+        releaseTag: SETTLEMENT_REGISTRY_RELEASE.releaseTag,
+        wasmHash: SETTLEMENT_REGISTRY_RELEASE.wasmHash,
+        specVersion: SETTLEMENT_REGISTRY_RELEASE.specVersion,
+        contractId: this.config.contractId,
+        network: this.config.network,
+        compatible: compatibility.compatible,
+        compatibilityReason: compatibility.reason,
+      },
+      features: SETTLEMENT_REGISTRY_RELEASE.features,
+    };
+
     let overallStatus: SettlementDiagnosticsResponse["status"] = "healthy";
     if (dbStatus === "unreachable" || contractStatus === "unreachable") {
       overallStatus = "unhealthy";
-    } else if (dbStatus === "degraded") {
+    } else if (dbStatus === "degraded" || !compatibility.compatible) {
       overallStatus = "degraded";
     }
 
@@ -176,6 +215,7 @@ export class SettlementDiagnosticsService {
       uptimeSeconds,
       version: "0.1.0",
       environment: this.config.network,
+      release,
       database,
       contract,
       indexing,

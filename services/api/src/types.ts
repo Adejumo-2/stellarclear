@@ -180,3 +180,22 @@ export interface HealthResponse {
   version: string;
   uptimeSeconds: number;
 }
+
+export interface VersionResponse {
+  protocol: string;
+  version: string;
+  releaseTag: string;
+  contract: {
+    name: string;
+    version: string;
+    releaseTag: string;
+    wasmHash: string;
+    specVersion: number;
+    contractId: string;
+    network: string;
+    compatible: boolean;
+    compatibilityReason?: string;
+  };
+  features: readonly string[];
+}
+

@@ -135,5 +135,62 @@ describe("API Service - Structured Settlement Health Diagnostics", () => {
     assert.strictEqual(body2.database.totalCases, 1);
     assert.strictEqual(body2.pipeline.openCases, 0);
     assert.strictEqual(body2.pipeline.matchedCases, 1);
+
+    // Release metadata in diagnostics
+    assert.strictEqual(body2.release.protocol, "STELLARCLEAR");
+    assert.strictEqual(body2.release.version, "0.1.0");
+    assert.strictEqual(body2.release.contract.name, "settlement_registry");
+    assert.strictEqual(body2.release.contract.version, "0.1.0");
+    assert.strictEqual(body2.release.contract.compatible, true);
+    assert.ok(body2.release.features.includes("case_creation"));
+  });
+
+  it("returns protocol and pinned contract release details on GET /v1/version", async () => {
+    const db = new InMemoryDatabaseClient();
+    const anchor = new SorobanSettlementAnchor();
+    const server = createApiServer(
+      {
+        port: 3000,
+        host: "0.0.0.0",
+        network: TEST_NETWORK,
+        databaseUrl: "postgres://localhost:5432/test",
+        contractId: TEST_CONTRACT_ID,
+      },
+      db,
+      anchor
+    );
+
+    const res = await server.inject({
+      method: "GET",
+      url: "/v1/version",
+    });
+
+    assert.strictEqual(res.statusCode, 200);
+    const body = res.body as {
+      protocol: string;
+      version: string;
+      releaseTag: string;
+      contract: {
+        name: string;
+        version: string;
+        releaseTag: string;
+        wasmHash: string;
+        specVersion: number;
+        contractId: string;
+        network: string;
+        compatible: boolean;
+      };
+      features: string[];
+    };
+
+    assert.strictEqual(body.protocol, "STELLARCLEAR");
+    assert.strictEqual(body.version, "0.1.0");
+    assert.strictEqual(body.releaseTag, "v0.1.0");
+    assert.strictEqual(body.contract.name, "settlement_registry");
+    assert.strictEqual(body.contract.version, "0.1.0");
+    assert.strictEqual(body.contract.specVersion, 1);
+    assert.strictEqual(body.contract.compatible, true);
+    assert.ok(body.features.includes("onchain_finalization"));
   });
 });
+

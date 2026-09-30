@@ -48,6 +48,7 @@ import { IdempotencyManager } from "./idempotency.js";
 import { ReadinessChecker } from "./readiness.js";
 import { formatApiError } from "./errors.js";
 import { validatePayloadSize } from "./validation.js";
+import { SettlementDiagnosticsService } from "./operations.js";
 
 export interface InjectOptions {
   method: string;
@@ -72,6 +73,7 @@ export class ApiServer {
   public readonly auditService: SettlementAuditService;
   public readonly idempotencyManager: IdempotencyManager;
   public readonly readinessChecker: ReadinessChecker;
+  public readonly diagnosticsService: SettlementDiagnosticsService;
 
   constructor(
     configInput: ApiConfigInput | ApiConfig,
@@ -125,6 +127,7 @@ export class ApiServer {
     );
     this.idempotencyManager = new IdempotencyManager();
     this.readinessChecker = new ReadinessChecker(this.config, this.dbClient, this.anchorService);
+    this.diagnosticsService = new SettlementDiagnosticsService(this.config, this.dbClient, this.anchorService);
   }
 
   /**
@@ -208,6 +211,17 @@ export class ApiServer {
           statusCode,
           headers: { "content-type": "application/json", "x-request-id": requestId },
           body: ready,
+        };
+      }
+
+      // 2b. GET /v1/operations/diagnostics or /v1/diagnostics
+      if (method === "GET" && (pathname === "/v1/operations/diagnostics" || pathname === "/v1/diagnostics")) {
+        const diagnostics = await this.diagnosticsService.getDiagnostics();
+        const statusCode = diagnostics.status === "unhealthy" ? 503 : 200;
+        return {
+          statusCode,
+          headers: { "content-type": "application/json", "x-request-id": requestId },
+          body: diagnostics,
         };
       }
 

@@ -46,6 +46,8 @@ import { SettlementConsistencyChecker } from "./consistency.js";
 import { SettlementAuditService } from "./audit.js";
 import { IdempotencyManager } from "./idempotency.js";
 import { ReadinessChecker } from "./readiness.js";
+import { formatApiError } from "./errors.js";
+import { validatePayloadSize } from "./validation.js";
 
 export interface InjectOptions {
   method: string;
@@ -126,9 +128,16 @@ export class ApiServer {
   }
 
   /**
-   * Public request dispatcher with idempotency middleware.
+   * Public request dispatcher with idempotency middleware and payload security.
    */
   public async handleRequest(req: HttpRequest): Promise<HttpResponse> {
+    const requestId = req.requestId || (req.headers["x-request-id"] as string) || generateUuid();
+
+    // Enforce payload size limit
+    if (!validatePayloadSize(req.body)) {
+      return this.errorResponse(413, "PAYLOAD_TOO_LARGE", "Request payload exceeds maximum allowed size (1 MB)", requestId);
+    }
+
     const rawIdempotency = req.headers["idempotency-key"] || req.headers["x-idempotency-key"];
     const idempotencyKey =
       typeof rawIdempotency === "string"
@@ -140,16 +149,32 @@ export class ApiServer {
     const pathname = url.pathname;
     const method = req.method.toUpperCase();
 
-    if (idempotencyKey && method !== "GET") {
-      const cached = this.idempotencyManager.get(method, pathname, idempotencyKey);
-      if (cached) {
-        return cached;
+    if (idempotencyKey) {
+      const validation = this.idempotencyManager.validateKey(idempotencyKey);
+      if (!validation.valid) {
+        return this.errorResponse(400, "MALFORMED_REQUEST", validation.error || "Invalid Idempotency-Key format", requestId);
+      }
+
+      if (method !== "GET") {
+        const evaluation = this.idempotencyManager.evaluate(method, pathname, idempotencyKey, req.body);
+        if (evaluation.status === "CONFLICT") {
+          return this.errorResponse(409, "IDEMPOTENCY_CONFLICT", evaluation.message, requestId);
+        }
+        if (evaluation.status === "HIT") {
+          return {
+            ...evaluation.response,
+            headers: {
+              ...evaluation.response.headers,
+              "x-request-id": requestId,
+            },
+          };
+        }
       }
     }
 
-    const res = await this.dispatchRequest(req, url, pathname, method);
+    const res = await this.dispatchRequest(req, url, pathname, method, requestId);
     if (idempotencyKey && method !== "GET" && res.statusCode >= 200 && res.statusCode < 400) {
-      this.idempotencyManager.set(method, pathname, idempotencyKey, res);
+      this.idempotencyManager.set(method, pathname, idempotencyKey, req.body, res);
     }
     return res;
   }
@@ -161,10 +186,9 @@ export class ApiServer {
     req: HttpRequest,
     url: URL,
     pathname: string,
-    method: string
+    method: string,
+    requestId: string
   ): Promise<HttpResponse> {
-    const requestId = req.requestId || (req.headers["x-request-id"] as string) || generateUuid();
-
     try {
       // 1. GET /health
       if (method === "GET" && pathname === "/health") {
@@ -1100,14 +1124,7 @@ export class ApiServer {
     return {
       statusCode,
       headers: { "content-type": "application/json", "x-request-id": requestId },
-      body: {
-        error: {
-          code,
-          message,
-          requestId,
-          details,
-        },
-      },
+      body: formatApiError(code, message, requestId, details),
     };
   }
 }

@@ -7,8 +7,8 @@ on:
     branches: [main]
 
 jobs:
-  build-test:
-    name: Build, typecheck, test
+  typecheck:
+    name: TypeScript Typecheck
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -26,8 +26,81 @@ jobs:
       - name: Build workspaces
         run: npm run build
 
-      - name: Typecheck
+      - name: Typecheck all workspaces and tests
         run: npm run typecheck
 
-      - name: Run tests
-        run: npm test
+  test-unit:
+    name: Unit Tests (Schemas, Proof, Matcher, DB, SDK)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run unit test suites
+        run: npm run test:unit
+
+  test-api:
+    name: API Endpoint & Lifecycle Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run API test suites
+        run: npm run test:api
+
+  test-indexer:
+    name: Indexer & State Sync Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run indexer test suites
+        run: npm run test:indexer
+
+  test-integration:
+    name: End-to-End & Live Soroban Integration Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run integration test suites
+        run: npm run test:integration

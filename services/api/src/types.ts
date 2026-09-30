@@ -94,6 +94,19 @@ export interface ConsistencyCheckDetails {
   statusMatch: boolean;
   onChainCaseExists: boolean;
   chainReferencePresent: boolean;
+  attestationsConsistent?: boolean;
+  disputeResolutionConsistent?: boolean;
+  finalizationConsistent?: boolean;
+  networkIdentityConsistent?: boolean;
+  transactionReferences?: {
+    createTxHash?: string;
+    observationTxHash?: string;
+    reconciliationTxHash?: string;
+    attestationTxHash?: string;
+    disputeTxHash?: string;
+    resolutionTxHash?: string;
+    finalizationTxHash?: string;
+  };
   discrepancies: string[];
 }
 

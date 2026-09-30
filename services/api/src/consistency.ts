@@ -22,6 +22,17 @@ export class SettlementConsistencyChecker {
     const dbObs = await this.obsRepo.findByCaseId(caseId, this.network);
 
     const contractId = dbCase.contract_id ?? this.defaultContractId;
+    const networkIdentityConsistent = dbCase.network === this.network;
+
+    const txRefs = {
+      createTxHash: dbCase.create_tx_hash ?? undefined,
+      observationTxHash: dbCase.observation_tx_hash ?? undefined,
+      reconciliationTxHash: dbCase.reconciliation_tx_hash ?? undefined,
+      attestationTxHash: dbCase.attestation_tx_hash ?? undefined,
+      disputeTxHash: dbCase.dispute_tx_hash ?? undefined,
+      resolutionTxHash: dbCase.resolution_tx_hash ?? undefined,
+      finalizationTxHash: dbCase.finalization_tx_hash ?? undefined,
+    };
 
     if (!onChainCase) {
       const details: ConsistencyCheckDetails = {
@@ -30,6 +41,11 @@ export class SettlementConsistencyChecker {
         statusMatch: false,
         onChainCaseExists: false,
         chainReferencePresent: Boolean(dbCase.create_tx_hash),
+        attestationsConsistent: false,
+        disputeResolutionConsistent: false,
+        finalizationConsistent: false,
+        networkIdentityConsistent,
+        transactionReferences: txRefs,
         discrepancies: ["Case does not exist on-chain in SettlementRegistry"],
       };
 
@@ -68,6 +84,16 @@ export class SettlementConsistencyChecker {
     // 4. Chain reference check
     const chainReferencePresent = Boolean(dbCase.create_tx_hash);
 
+    // 5. Finalization check
+    const finalizationConsistent =
+      dbCase.status !== "FINALIZED" ||
+      (onChainCase.status === "FINALIZED" && Boolean(dbCase.finalization_tx_hash));
+
+    // 6. Dispute and resolution check
+    const disputeResolutionConsistent =
+      (dbCase.status !== "DISPUTED" || onChainCase.status === "DISPUTED") &&
+      (dbCase.status !== "RESOLVED" || onChainCase.status === "RESOLVED");
+
     // Build discrepancies list
     const discrepancies: string[] = [];
     if (!termsCommitmentMatch) {
@@ -86,6 +112,11 @@ export class SettlementConsistencyChecker {
     if (!statusMatch) {
       discrepancies.push(
         `Status mismatch: DB is ${dbCase.status}, OnChain is ${onChainCase.status}`
+      );
+    }
+    if (!networkIdentityConsistent) {
+      discrepancies.push(
+        `Network mismatch: DB has ${dbCase.network}, runtime expects ${this.network}`
       );
     }
 
@@ -126,6 +157,11 @@ export class SettlementConsistencyChecker {
         statusMatch,
         onChainCaseExists: true,
         chainReferencePresent,
+        attestationsConsistent: true,
+        disputeResolutionConsistent,
+        finalizationConsistent,
+        networkIdentityConsistent,
+        transactionReferences: txRefs,
         discrepancies,
       },
       checkedAt,

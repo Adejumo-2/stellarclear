@@ -44,9 +44,14 @@ curl -i http://localhost:3000/ready
 
 ---
 
-## 2. On-Chain Consistency Verification
+## 2. On-Chain & Cross-Layer Consistency Verification
 
-To verify that the off-chain database and on-chain Soroban contract state remain in lockstep:
+StellarClear enforces a strict cross-layer consistency model:
+```text
+Database state == Indexed state == On-chain state == SettlementProof
+```
+
+To verify that the off-chain database, indexer state, on-chain Soroban contract state, and proof commitments remain in lockstep:
 
 ```bash
 curl http://localhost:3000/v1/cases/:caseId/consistency
@@ -54,9 +59,27 @@ curl http://localhost:3000/v1/cases/:caseId/consistency
 
 ### Consistency Report Fields:
 - `isConsistent`: Boolean flag indicating complete agreement between DB and contract.
-- `stateMismatch`: Detected discrepancies (`CONSISTENT`, `MISSING_ONCHAIN_CASE`, `COMMITMENT_MISMATCH`, `STATE_MISMATCH`, `STALE_DATABASE`, `STALE_CHAIN_REFERENCE`).
-- `dbCase`: Off-chain database snapshot.
-- `onchainCase`: Authoritative Soroban contract state.
+- `consistencyStatus`: High-level status classification:
+  - `CONSISTENT`: Complete agreement across commitments, statuses, and transaction references.
+  - `MISSING_ONCHAIN_CASE`: Case exists in database but has not been anchored in Soroban `SettlementRegistry`.
+  - `COMMITMENT_MISMATCH`: Cryptographic SHA-256 commitments differ between database records and on-chain state.
+  - `STATE_MISMATCH`: Database status and contract status contradict each other.
+  - `STALE_DATABASE`: On-chain state has advanced past the database representation (requires indexer catch-up).
+  - `STALE_CHAIN_REFERENCE`: Missing create or lifecycle transaction references in local persistence.
+- `databaseStatus`: Off-chain database lifecycle status (`OPEN`, `OBSERVED`, `MATCHED`, `BREAK`, `DISPUTED`, `RESOLVED`, `FINALIZED`).
+- `onChainStatus`: Authoritative on-chain Soroban lifecycle status.
+- `details`:
+  - `termsCommitmentMatch`: Boolean verification of terms hash.
+  - `observationCommitmentMatch`: Boolean verification of observation hash.
+  - `statusMatch`: Boolean check on state alignment.
+  - `onChainCaseExists`: Verification of contract entry.
+  - `chainReferencePresent`: Verification of create transaction hash.
+  - `attestationsConsistent`: Verification of multi-party attestations.
+  - `disputeResolutionConsistent`: Verification of dispute/resolution records.
+  - `finalizationConsistent`: Verification of final ledger and state.
+  - `networkIdentityConsistent`: Verification of contract ID and network passphrase.
+  - `transactionReferences`: Recorded transaction hashes (`createTxHash`, `observationTxHash`, `reconciliationTxHash`, `attestationTxHash`, `disputeTxHash`, `resolutionTxHash`, `finalizationTxHash`).
+  - `discrepancies`: List of human-readable diagnostic descriptions for any detected mismatch.
 
 ---
 

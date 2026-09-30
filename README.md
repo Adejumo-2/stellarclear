@@ -35,6 +35,7 @@ Comprehensive guides and technical documentation are available in the [`docs/`](
 - [Integration Verification Guide](./docs/integration-verification.md) — Test suite layout, running live Soroban lifecycles, and verification procedures.
 - [Release Readiness Guide](./docs/release-readiness.md) — Pre-flight release checks, CI verification pipeline, and promotion checklist.
 - [Release Candidate Runbook](./docs/release-candidate-runbook.md) — Operational verification gates, health diagnostics, and incident playbooks.
+- [Production Release Procedure](./docs/production-release-procedure.md) — Production rollout sequence, WASM pinning, smoke tests, and rollback procedures.
 
 
 ---

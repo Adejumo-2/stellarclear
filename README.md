@@ -34,6 +34,8 @@ Comprehensive guides and technical documentation are available in the [`docs/`](
 - [Troubleshooting & Break Remediation](./docs/troubleshooting.md) — Break diagnoses, Soroban contract error codes, and indexer resynchronization.
 - [Integration Verification Guide](./docs/integration-verification.md) — Test suite layout, running live Soroban lifecycles, and verification procedures.
 - [Release Readiness Guide](./docs/release-readiness.md) — Pre-flight release checks, CI verification pipeline, and promotion checklist.
+- [Release Candidate Runbook](./docs/release-candidate-runbook.md) — Operational verification gates, health diagnostics, and incident playbooks.
+
 
 ---
 

@@ -139,4 +139,23 @@ curl -X POST http://localhost:3000/v1/cases/1111.../finalize \
 ```
 
 - If a network retry occurs with the same `Idempotency-Key`, the API returns the original cached response with identical status codes without re-submitting transactions or modifying records.
-- Duplicate finalization attempts on already finalized cases return the existing finalized state safely with `isIdempotentReplay: true`.
+- Duplicate finalization attempts on already finalized cases return the existing finalized state safely with `x-idempotent-replay: true`.
+
+---
+
+## 5. Structured Settlement Health Diagnostics
+
+For comprehensive observability, the API exposes deep settlement pipeline telemetry:
+
+```bash
+curl http://localhost:3000/v1/operations/diagnostics
+```
+
+### Telemetry Details:
+- **`database`**: Latency, connection status, case counts, observation counts, and break records.
+- **`contract`**: Configured Soroban contract ID, network passphrase, RPC reachability, and RPC ping latency.
+- **`indexing`**: Current synced ledger, latest checkpoint sequence, and unapplied event backlog.
+- **`pipeline`**: Live counts of open, matched, broken, disputed, resolved, and finalized settlement cases.
+
+For release-candidate verification and incident playbooks, refer to the [Release Candidate Runbook](./release-candidate-runbook.md).
+

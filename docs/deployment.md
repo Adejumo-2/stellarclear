@@ -173,4 +173,14 @@ services:
 
 volumes:
   pgdata:
+
+---
+
+## 7. Release Candidate Promotion & Verification
+
+Before promoting builds to production staging or mainnet:
+1. Follow the verification gates in [Release Candidate Runbook](./release-candidate-runbook.md).
+2. Execute `npm run verify:release`.
+3. Inspect operational diagnostics at `GET /v1/operations/diagnostics`.
+
 ```

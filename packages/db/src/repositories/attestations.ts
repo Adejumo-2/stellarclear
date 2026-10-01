@@ -8,6 +8,10 @@ export class AttestationRepository {
     if ("getTable" in this.client) {
       const mem = this.client as unknown as InMemoryDatabaseClient;
       const table = mem.getTable("attestations");
+      const existing = table.find((r) => r["network"] === attestation.network && r["case_id"] === attestation.case_id && r["attestor"] === attestation.attestor);
+      if (existing) {
+        return existing as unknown as DbAttestation;
+      }
       const record = { ...attestation, id: table.length + 1 };
       table.push(record);
       return record;

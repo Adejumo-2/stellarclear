@@ -8,6 +8,10 @@ export class ResolutionRepository {
     if ("getTable" in this.client) {
       const mem = this.client as unknown as InMemoryDatabaseClient;
       const table = mem.getTable("resolutions");
+      const existing = table.find((r) => r["network"] === resolution.network && r["case_id"] === resolution.case_id && r["resolver"] === resolution.resolver);
+      if (existing) {
+        return existing as unknown as DbResolution;
+      }
       const record = { ...resolution, id: table.length + 1 };
       table.push(record);
       return record;

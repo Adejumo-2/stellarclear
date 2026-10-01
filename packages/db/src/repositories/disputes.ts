@@ -8,6 +8,10 @@ export class DisputeRepository {
     if ("getTable" in this.client) {
       const mem = this.client as unknown as InMemoryDatabaseClient;
       const table = mem.getTable("disputes");
+      const existing = table.find((r) => r["network"] === dispute.network && r["case_id"] === dispute.case_id && r["initiator"] === dispute.initiator);
+      if (existing) {
+        return existing as unknown as DbDispute;
+      }
       const record = { ...dispute, id: table.length + 1 };
       table.push(record);
       return record;

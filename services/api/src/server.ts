@@ -14,6 +14,7 @@ import {
   type ExpectedSettlement,
   type ObservedSettlement,
   type Attestation,
+  type Break,
   type ReconciliationStatus,
 } from "@stellarclear/schemas";
 import {
@@ -760,7 +761,7 @@ export class ApiServer {
 
         if (result.breaks.length > 0) {
           await this.breakRepo.insertMany(
-            result.breaks.map((b) => ({
+            result.breaks.map((b: Break) => ({
               network: this.config.network,
               case_id: caseId,
               reconciliation_id: recRecord.id,

@@ -35,7 +35,7 @@ export function verifySettlementProof(
   if (!parsed.success) {
     return {
       valid: false,
-      reason: `Malformed proof schema: ${parsed.error.issues.map((i) => i.message).join(", ")}`,
+      reason: `Malformed proof schema: ${parsed.error.issues.map((i: { message: string }) => i.message).join(", ")}`,
     };
   }
 

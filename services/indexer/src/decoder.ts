@@ -1,4 +1,4 @@
-import { Buffer } from "buffer";
+import { Buffer } from "node:buffer";
 import type { DecodedContractEvent, SettlementEventType } from "./types.js";
 import { contractToBreakCode, contractToAttestationRole } from "@stellarclear/sdk";
 import type {
@@ -171,7 +171,7 @@ function extractCaseId(val: unknown): string {
     return val.toLowerCase();
   }
   if (val && typeof val === "object" && Buffer.isBuffer(val)) {
-    return val.toString("hex").toLowerCase();
+    return (val as Buffer).toString("hex").toLowerCase();
   }
   return String(val ?? "").toLowerCase();
 }
@@ -181,7 +181,7 @@ function extractHex(val: unknown): string {
     return val.toLowerCase();
   }
   if (val && typeof val === "object" && Buffer.isBuffer(val)) {
-    return val.toString("hex").toLowerCase();
+    return (val as Buffer).toString("hex").toLowerCase();
   }
   return String(val ?? "").toLowerCase();
 }

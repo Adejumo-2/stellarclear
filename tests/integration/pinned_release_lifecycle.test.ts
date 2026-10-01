@@ -19,28 +19,138 @@ const VALID_CP = "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN";
 const VALID_ASSET = "USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN";
 
 describe("Integration - Pinned SettlementRegistry Release End-to-End Lifecycle", () => {
-  it("verifies pinned release metadata integrity and compatibility", () => {
+  it("verifies pinned release metadata integrity, provenance, and compatibility", () => {
     const release = getPinnedContractRelease();
     assert.strictEqual(release.name, "settlement_registry");
     assert.strictEqual(release.version, "0.1.0");
     assert.strictEqual(release.releaseTag, "v0.1.0");
     assert.strictEqual(release.specVersion, 1);
-    assert.strictEqual(typeof release.wasmHash, "string");
-    assert.strictEqual(release.wasmHash.length, 64);
+    assert.strictEqual(
+      release.wasmHash,
+      "1018a81b1ac95046cb00466ceda7ee347204c08b71b1c51b3c9611dd32215d66"
+    );
+    assert.strictEqual(
+      release.gitCommit,
+      "fcd48d20736dda40e400e420c6e984a707f80e76"
+    );
+    assert.strictEqual(
+      release.contractRepository,
+      "https://github.com/StellarClear/stellarclear-contract"
+    );
+    assert.strictEqual(
+      release.artifactFile,
+      "artifacts/v0.1.0/settlement_registry.wasm"
+    );
     assert.ok(release.features.includes("case_creation"));
-    assert.ok(release.features.includes("onchain_finalization"));
+    assert.ok(release.features.includes("observation_anchoring"));
+    assert.ok(release.features.includes("match_reconciliation"));
+    assert.ok(release.features.includes("break_classification"));
+    assert.ok(release.features.includes("dispute_workflows"));
+    assert.ok(release.features.includes("arbitration_resolution"));
     assert.ok(release.features.includes("multi_party_attestations"));
+    assert.ok(release.features.includes("onchain_finalization"));
 
     // Check deployment records
     assert.ok(release.deployedNetworks.testnet);
     assert.ok(release.deployedNetworks.local);
-    assert.strictEqual(release.deployedNetworks.testnet.contractId.startsWith("C"), true);
+    assert.strictEqual(
+      release.deployedNetworks.testnet.contractId,
+      "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+    );
+    assert.strictEqual(
+      release.deployedNetworks.testnet.networkPassphrase,
+      "Test SDF Network ; September 2015"
+    );
+    assert.strictEqual(
+      release.deployedNetworks.local.contractId,
+      "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
+    );
 
     // Test compatibility validator
     assert.strictEqual(verifyContractReleaseCompatibility("testnet").compatible, true);
     assert.strictEqual(verifyContractReleaseCompatibility("local").compatible, true);
     assert.strictEqual(verifyContractReleaseCompatibility("mainnet").compatible, true);
     assert.strictEqual(verifyContractReleaseCompatibility("unknown_net").compatible, false);
+  });
+
+  it("detects and rejects mismatches in contract identity, format, and network configuration", () => {
+    // Rejects non-C format address (e.g. Account G-address instead of Contract C-address)
+    const badStrKey = verifyContractReleaseCompatibility(
+      "testnet",
+      "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFXYORMA3Y4H3EL2PUGQY"
+    );
+    assert.strictEqual(badStrKey.compatible, false);
+    assert.ok(badStrKey.reason?.includes("not a valid StrKey contract address"));
+
+    // Rejects invalid length contract identifier
+    const shortId = verifyContractReleaseCompatibility("testnet", "C12345");
+    assert.strictEqual(shortId.compatible, false);
+    assert.ok(shortId.reason?.includes("not a valid StrKey contract address"));
+
+    // Rejects unrecognized network names
+    const badNetwork = verifyContractReleaseCompatibility("solana_mainnet");
+    assert.strictEqual(badNetwork.compatible, false);
+    assert.ok(badNetwork.reason?.includes("not a recognized deployment network"));
+  });
+
+  it("verifies operational diagnostic and version endpoints expose authoritative pinned release", async () => {
+    const { server } = setupLiveSettlementEnvironment();
+
+    // Query /v1/version
+    const versionRes = await server.inject({
+      method: "GET",
+      url: "/v1/version",
+    });
+    assert.strictEqual(versionRes.statusCode, 200);
+    const versionBody = versionRes.body as {
+      protocol: string;
+      version: string;
+      releaseTag: string;
+      contract: {
+        name: string;
+        version: string;
+        releaseTag: string;
+        wasmHash: string;
+        specVersion: number;
+        contractId: string;
+        network: string;
+        compatible: boolean;
+      };
+      features: string[];
+    };
+    assert.strictEqual(versionBody.protocol, "STELLARCLEAR");
+    assert.strictEqual(versionBody.version, "0.1.0");
+    assert.strictEqual(versionBody.releaseTag, "v0.1.0");
+    assert.strictEqual(versionBody.contract.name, "settlement_registry");
+    assert.strictEqual(versionBody.contract.version, "0.1.0");
+    assert.strictEqual(versionBody.contract.releaseTag, "v0.1.0");
+    assert.strictEqual(
+      versionBody.contract.wasmHash,
+      "1018a81b1ac95046cb00466ceda7ee347204c08b71b1c51b3c9611dd32215d66"
+    );
+    assert.strictEqual(versionBody.contract.specVersion, 1);
+    assert.strictEqual(versionBody.contract.compatible, true);
+
+    // Query /v1/operations/diagnostics
+    const diagRes = await server.inject({
+      method: "GET",
+      url: "/v1/operations/diagnostics",
+    });
+    assert.strictEqual(diagRes.statusCode, 200);
+    const diagBody = diagRes.body as {
+      status: string;
+      version: string;
+      contract: {
+        status: string;
+        contractId: string;
+        network: string;
+      };
+    };
+    assert.strictEqual(diagBody.status, "healthy");
+    assert.strictEqual(diagBody.version, "0.1.0");
+    assert.strictEqual(diagBody.contract.status, "healthy");
+    assert.strictEqual(diagBody.contract.contractId, TEST_LIVE_CONTRACT_ID);
+    assert.strictEqual(diagBody.contract.network, TEST_LIVE_NETWORK);
   });
 
   it("executes full match lifecycle bound to pinned contract release", async () => {

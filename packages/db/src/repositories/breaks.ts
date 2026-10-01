@@ -12,9 +12,15 @@ export class BreakRepository {
       const table = mem.getTable("breaks");
       const inserted: DbBreak[] = [];
       for (const b of breaks) {
-        const item = { ...b, id: table.length + 1 };
-        table.push(item);
-        inserted.push(item);
+        const existing = table.find((r) => r["case_id"] === b.case_id && r["network"] === b.network && r["code"] === b.code);
+        if (existing) {
+          Object.assign(existing, b);
+          inserted.push(existing as unknown as DbBreak);
+        } else {
+          const item = { ...b, id: table.length + 1 };
+          table.push(item);
+          inserted.push(item);
+        }
       }
       return inserted;
     }

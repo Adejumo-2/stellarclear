@@ -210,4 +210,71 @@ describe("Integration - Cross-Layer Settlement Consistency Verification", () => 
     assert.strictEqual(body.isConsistent, false);
     assert.strictEqual(body.consistencyStatus, "STALE_DATABASE");
   });
+
+  it("detects STALE_CHAIN_REFERENCE when finalized case in DB lacks finalization_tx_hash", async () => {
+    const { caseRepo, server } = setupLiveSettlementEnvironment();
+
+    const caseId = "c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5";
+    const terms: ExpectedSettlement = {
+      caseId,
+      owner: "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFTGOBKGOTQTV4HXY5SLQ",
+      tradeReference: "TRADE-MISSING-FINALIZATION-TX",
+      asset: "USDC:GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+      amount: "1000.00",
+      expectedDestination: "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFTGOBKGOTQTV4HXY5SLQ",
+      deadline: 1800000,
+    };
+
+    await server.inject({
+      method: "POST",
+      url: "/v1/cases",
+      body: { expected: terms },
+    });
+
+    // Observe
+    await server.inject({
+      method: "POST",
+      url: `/v1/cases/${caseId}/observe`,
+      body: {
+        observation: {
+          txHash: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          ledger: 1550000,
+          asset: terms.asset,
+          amount: terms.amount,
+          destination: terms.expectedDestination,
+          status: "SUCCESS",
+          observedAt: new Date().toISOString(),
+        },
+      },
+    });
+
+    // Reconcile -> MATCHED
+    await server.inject({
+      method: "POST",
+      url: `/v1/cases/${caseId}/reconcile`,
+    });
+
+    // Finalize
+    await server.inject({
+      method: "POST",
+      url: `/v1/cases/${caseId}/finalize`,
+      body: { finalizer: terms.owner },
+    });
+
+    // Clear finalization_tx_hash in DB
+    await caseRepo.updateChainReferences(caseId, TEST_LIVE_NETWORK, {
+      finalization_tx_hash: null,
+    });
+
+    const res = await server.inject({
+      method: "GET",
+      url: `/v1/cases/${caseId}/consistency`,
+    });
+    assert.strictEqual(res.statusCode, 200);
+    const body = res.body as CaseConsistencyResponse;
+
+    assert.strictEqual(body.isConsistent, false);
+    assert.strictEqual(body.consistencyStatus, "STALE_CHAIN_REFERENCE");
+    assert.strictEqual(body.details.finalizationConsistent, false);
+  });
 });

@@ -9,12 +9,13 @@ export class CaseRepository {
     if ("getTable" in this.client) {
       const mem = this.client as unknown as InMemoryDatabaseClient;
       const table = mem.getTable("settlement_cases");
-      const existing = table.find((r) => r["id"] === caseData.id && r["network"] === caseData.network);
+      const existing = table.find((r) => r["id"] === caseData.id.toLowerCase() && r["network"] === caseData.network);
       if (existing) {
         throw new Error(`Duplicate case ${caseData.id} on network ${caseData.network}`);
       }
-      table.push({ ...caseData });
-      return caseData;
+      const record = { ...caseData, id: caseData.id.toLowerCase() };
+      table.push(record);
+      return record;
     }
 
     const sql = `

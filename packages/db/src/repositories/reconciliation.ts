@@ -8,6 +8,11 @@ export class ReconciliationRepository {
     if ("getTable" in this.client) {
       const mem = this.client as unknown as InMemoryDatabaseClient;
       const table = mem.getTable("reconciliation_results");
+      const existing = table.find((r) => r["network"] === result.network && r["case_id"] === result.case_id);
+      if (existing) {
+        Object.assign(existing, result);
+        return existing as unknown as DbReconciliationResult;
+      }
       const record = { ...result, id: table.length + 1 };
       table.push(record);
       return record;
@@ -16,6 +21,12 @@ export class ReconciliationRepository {
     const sql = `
       INSERT INTO reconciliation_results (network, case_id, status, matched, reconciliation_tx_hash, confirmed_at_ledger, reconciled_at, created_at)
       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+      ON CONFLICT (network, case_id) DO UPDATE SET
+        status = EXCLUDED.status,
+        matched = EXCLUDED.matched,
+        reconciliation_tx_hash = COALESCE(EXCLUDED.reconciliation_tx_hash, reconciliation_results.reconciliation_tx_hash),
+        confirmed_at_ledger = COALESCE(EXCLUDED.confirmed_at_ledger, reconciliation_results.confirmed_at_ledger),
+        reconciled_at = EXCLUDED.reconciled_at
       RETURNING *;
     `;
     const res = await this.client.query<DbReconciliationResult>(sql, [

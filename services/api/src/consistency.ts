@@ -109,6 +109,12 @@ export class SettlementConsistencyChecker {
     if (!chainReferencePresent) {
       discrepancies.push("Case is missing create transaction hash reference in database");
     }
+    if (!finalizationConsistent) {
+      discrepancies.push("Finalized case is missing finalization transaction hash reference or on-chain confirmation in database");
+    }
+    if (!disputeResolutionConsistent) {
+      discrepancies.push("Dispute or resolution state is inconsistent between database and on-chain record");
+    }
     if (!statusMatch) {
       discrepancies.push(
         `Status mismatch: DB is ${dbCase.status}, OnChain is ${onChainCase.status}`
@@ -125,11 +131,11 @@ export class SettlementConsistencyChecker {
 
     if (!termsCommitmentMatch || (dbObs && onChainObsCommitment && !observationCommitmentMatch)) {
       consistencyStatus = "COMMITMENT_MISMATCH";
-    } else if (!chainReferencePresent) {
+    } else if (!chainReferencePresent || !finalizationConsistent) {
       consistencyStatus = "STALE_CHAIN_REFERENCE";
     } else if (!dbObs && onChainObsCommitment) {
       consistencyStatus = "STALE_DATABASE";
-    } else if (!statusMatch) {
+    } else if (!statusMatch || !disputeResolutionConsistent || !networkIdentityConsistent) {
       // If onChain has advanced state compared to DB
       const order = ["OPEN", "OBSERVED", "MATCHED", "BREAK", "DISPUTED", "RESOLVED", "FINALIZED"];
       const dbIdx = order.indexOf(dbCase.status);
@@ -141,7 +147,7 @@ export class SettlementConsistencyChecker {
       }
     }
 
-    const isConsistent = consistencyStatus === "CONSISTENT";
+    const isConsistent = consistencyStatus === "CONSISTENT" && discrepancies.length === 0;
 
     return {
       caseId,

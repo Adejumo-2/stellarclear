@@ -8,8 +8,14 @@ export class ObservationRepository {
     if ("getTable" in this.client) {
       const mem = this.client as unknown as InMemoryDatabaseClient;
       const table = mem.getTable("settlement_observations");
-      table.push({ ...obs, id: table.length + 1 });
-      return obs;
+      const existing = table.find((r) => r["network"] === obs.network && r["case_id"] === obs.case_id && r["tx_hash"] === obs.tx_hash);
+      if (existing) {
+        Object.assign(existing, obs);
+        return existing as unknown as DbSettlementObservation;
+      }
+      const record = { ...obs, id: table.length + 1 };
+      table.push(record);
+      return record;
     }
 
     const sql = `
@@ -19,6 +25,17 @@ export class ObservationRepository {
         asset, amount, destination, reference,
         status, observed_at, created_at
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW())
+      ON CONFLICT (network, case_id, tx_hash) DO UPDATE SET
+        observation_tx_hash = COALESCE(EXCLUDED.observation_tx_hash, settlement_observations.observation_tx_hash),
+        confirmed_at_ledger = COALESCE(EXCLUDED.confirmed_at_ledger, settlement_observations.confirmed_at_ledger),
+        observed_ledger = EXCLUDED.observed_ledger,
+        observation_commitment = EXCLUDED.observation_commitment,
+        asset = EXCLUDED.asset,
+        amount = EXCLUDED.amount,
+        destination = EXCLUDED.destination,
+        reference = COALESCE(EXCLUDED.reference, settlement_observations.reference),
+        status = EXCLUDED.status,
+        observed_at = EXCLUDED.observed_at
       RETURNING *;
     `;
     const params = [

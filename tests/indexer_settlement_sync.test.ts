@@ -1,6 +1,15 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { InMemoryDatabaseClient, CaseRepository, ObservationRepository, ReconciliationRepository } from "@stellarclear/db";
+import {
+  InMemoryDatabaseClient,
+  CaseRepository,
+  ObservationRepository,
+  ReconciliationRepository,
+  BreakRepository,
+  DisputeRepository,
+  ResolutionRepository,
+  AttestationRepository,
+} from "@stellarclear/db";
 import { SettlementStateSynchronizer, type DecodedContractEvent } from "@stellarclear/indexer";
 
 const TEST_CONTRACT_ID = "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM";
@@ -14,8 +23,12 @@ describe("Indexer Service - Settlement State Synchronization", () => {
     const caseRepo = new CaseRepository(db);
     const obsRepo = new ObservationRepository(db);
     const recRepo = new ReconciliationRepository(db);
+    const breakRepo = new BreakRepository(db);
+    const disputeRepo = new DisputeRepository(db);
+    const resolutionRepo = new ResolutionRepository(db);
+    const attestationRepo = new AttestationRepository(db);
     const synchronizer = new SettlementStateSynchronizer(db, TEST_NETWORK);
-    return { db, caseRepo, obsRepo, recRepo, synchronizer };
+    return { db, caseRepo, obsRepo, recRepo, breakRepo, disputeRepo, resolutionRepo, attestationRepo, synchronizer };
   }
 
   it("synchronizes case creation and updates ledger checkpoints", async () => {
@@ -65,7 +78,7 @@ describe("Indexer Service - Settlement State Synchronization", () => {
   });
 
   it("synchronizes observation, match, attestation, and finalization in batch idempotently", async () => {
-    const { caseRepo, obsRepo, recRepo, synchronizer } = setup();
+    const { caseRepo, obsRepo, synchronizer } = setup();
 
     const now = new Date();
     await caseRepo.insert({
@@ -253,5 +266,228 @@ describe("Indexer Service - Settlement State Synchronization", () => {
     const observerSynced = await synchronizer.syncEvent(observerEvent);
     assert.strictEqual(observerSynced, true);
   });
+
+  it("handles out-of-order events gracefully without regressing status or dropping case metadata", async () => {
+    const { caseRepo, recRepo, synchronizer } = setup();
+    const outOfOrderCaseId = "3030303030303030303030303030303030303030303030303030303030303030";
+
+    // 1. CaseMatched arrives BEFORE CaseCreated (e.g. indexer lag or out-of-order batch delivery)
+    const matchEvent: DecodedContractEvent = {
+      type: "CaseMatched",
+      contractId: TEST_CONTRACT_ID,
+      ledger: 777200,
+      txHash: "0x_match_first",
+      cursor: "cursor_ooo_1",
+      topicXdr: "AAAAAA==",
+      dataXdr: "AAAAAA==",
+      caseId: outOfOrderCaseId,
+      payload: { caseId: outOfOrderCaseId },
+    };
+
+    const matchSynced = await synchronizer.syncEvent(matchEvent);
+    assert.strictEqual(matchSynced, true);
+
+    const initialCase = await caseRepo.findById(outOfOrderCaseId, TEST_NETWORK);
+    assert.ok(initialCase);
+    assert.strictEqual(initialCase!.status, "MATCHED");
+    assert.strictEqual(initialCase!.reconciliation_tx_hash, "0x_match_first");
+
+    const initialRec = await recRepo.findByCaseId(outOfOrderCaseId, TEST_NETWORK);
+    assert.ok(initialRec);
+    assert.strictEqual(initialRec!.matched, true);
+    assert.strictEqual(initialRec!.status, "MATCHED");
+
+    // 2. CaseCreated arrives LATER
+    const createdEvent: DecodedContractEvent = {
+      type: "CaseCreated",
+      contractId: TEST_CONTRACT_ID,
+      ledger: 777000,
+      txHash: "0x_create_later",
+      cursor: "cursor_ooo_2",
+      topicXdr: "AAAAAA==",
+      dataXdr: "AAAAAA==",
+      caseId: outOfOrderCaseId,
+      payload: {
+        caseId: outOfOrderCaseId,
+        owner: "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFTGOBKGOTQTV4HXY5SLQ",
+        counterparty: "GA2C5RFPE6GCKMY3US5PAB6UZLKIGSPIUKSLRB6ZN7JIBKTRUXZLVTH5",
+        tradeReference: "TR-OOO-001",
+        asset: "USDC:GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+        amount: "125000.00",
+        expectedDestination: "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFTGOBKGOTQTV4HXY5SLQ",
+        termsCommitment: "f".repeat(64),
+        expiresAtLedger: 999999,
+      },
+    };
+
+    const createdSynced = await synchronizer.syncEvent(createdEvent);
+    assert.strictEqual(createdSynced, true);
+
+    // Case metadata should now be populated, and status must remain MATCHED (no regression to OPEN)
+    const enrichedCase = await caseRepo.findById(outOfOrderCaseId, TEST_NETWORK);
+    assert.ok(enrichedCase);
+    assert.strictEqual(enrichedCase!.status, "MATCHED");
+    assert.strictEqual(enrichedCase!.trade_reference, "TR-OOO-001");
+    assert.strictEqual(enrichedCase!.owner, "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFTGOBKGOTQTV4HXY5SLQ");
+    assert.strictEqual(enrichedCase!.create_tx_hash, "0x_create_later");
+    assert.strictEqual(enrichedCase!.reconciliation_tx_hash, "0x_match_first");
+  });
+
+  it("reconstructs break, dispute, resolution, and finalization lifecycle completely from on-chain events", async () => {
+    const { caseRepo, recRepo, breakRepo, disputeRepo, resolutionRepo, synchronizer } = setup();
+    const breakCaseId = "4040404040404040404040404040404040404040404040404040404040404040";
+
+    const lifecycleEvents: DecodedContractEvent[] = [
+      {
+        type: "CaseCreated",
+        contractId: TEST_CONTRACT_ID,
+        ledger: 600000,
+        txHash: "0x_break_create",
+        cursor: "cur_1",
+        topicXdr: "AAAAAA==",
+        dataXdr: "AAAAAA==",
+        caseId: breakCaseId,
+        payload: {
+          caseId: breakCaseId,
+          owner: "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFTGOBKGOTQTV4HXY5SLQ",
+          tradeReference: "TR-BREAK-001",
+          asset: "XLM",
+          amount: "1000",
+          termsCommitment: "1".repeat(64),
+        },
+      },
+      {
+        type: "ObservationRecorded",
+        contractId: TEST_CONTRACT_ID,
+        ledger: 600100,
+        txHash: "0x_break_obs",
+        cursor: "cur_2",
+        topicXdr: "AAAAAA==",
+        dataXdr: "AAAAAA==",
+        caseId: breakCaseId,
+        payload: {
+          caseId: breakCaseId,
+          observer: "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFTGOBKGOTQTV4HXY5SLQ",
+          txHash: "0x_mismatched_tx",
+          observedLedger: 600050,
+          observationCommitment: "2".repeat(64),
+          asset: "XLM",
+          amount: "800",
+        },
+      },
+      {
+        type: "CaseBroken",
+        contractId: TEST_CONTRACT_ID,
+        ledger: 600200,
+        txHash: "0x_break_rec",
+        cursor: "cur_3",
+        topicXdr: "AAAAAA==",
+        dataXdr: "AAAAAA==",
+        caseId: breakCaseId,
+        payload: {
+          caseId: breakCaseId,
+          breakCode: "AMOUNT_MISMATCH",
+        },
+      },
+      {
+        type: "DisputeOpened",
+        contractId: TEST_CONTRACT_ID,
+        ledger: 600300,
+        txHash: "0x_break_dispute",
+        cursor: "cur_4",
+        topicXdr: "AAAAAA==",
+        dataXdr: "AAAAAA==",
+        caseId: breakCaseId,
+        payload: {
+          caseId: breakCaseId,
+          initiator: "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFTGOBKGOTQTV4HXY5SLQ",
+          disputeCommitment: "3".repeat(64),
+        },
+      },
+      {
+        type: "ResolutionSubmitted",
+        contractId: TEST_CONTRACT_ID,
+        ledger: 600400,
+        txHash: "0x_break_resolution",
+        cursor: "cur_5",
+        topicXdr: "AAAAAA==",
+        dataXdr: "AAAAAA==",
+        caseId: breakCaseId,
+        payload: {
+          caseId: breakCaseId,
+          resolver: "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFTGOBKGOTQTV4HXY5SLQ",
+          resolutionCommitment: "4".repeat(64),
+        },
+      },
+      {
+        type: "DisputeResolved",
+        contractId: TEST_CONTRACT_ID,
+        ledger: 600500,
+        txHash: "0x_break_resolved",
+        cursor: "cur_6",
+        topicXdr: "AAAAAA==",
+        dataXdr: "AAAAAA==",
+        caseId: breakCaseId,
+        payload: {
+          caseId: breakCaseId,
+          resolutionCommitment: "4".repeat(64),
+        },
+      },
+      {
+        type: "CaseFinalized",
+        contractId: TEST_CONTRACT_ID,
+        ledger: 600600,
+        txHash: "0x_break_finalized",
+        cursor: "cur_7",
+        topicXdr: "AAAAAA==",
+        dataXdr: "AAAAAA==",
+        caseId: breakCaseId,
+        payload: {
+          caseId: breakCaseId,
+          finalizedAtLedger: 600600,
+        },
+      },
+    ];
+
+    const stats = await synchronizer.syncBatch(lifecycleEvents);
+    assert.strictEqual(stats.eventsProcessed, 7);
+    assert.strictEqual(stats.casesUpdated, 7);
+
+    // Verify all reconstructed entities
+    const dbCase = await caseRepo.findById(breakCaseId, TEST_NETWORK);
+    assert.ok(dbCase);
+    assert.strictEqual(dbCase!.status, "FINALIZED");
+    assert.strictEqual(dbCase!.create_tx_hash, "0x_break_create");
+    assert.strictEqual(dbCase!.observation_tx_hash, "0x_break_obs");
+    assert.strictEqual(dbCase!.reconciliation_tx_hash, "0x_break_rec");
+    assert.strictEqual(dbCase!.dispute_tx_hash, "0x_break_dispute");
+    assert.strictEqual(dbCase!.resolution_tx_hash, "0x_break_resolved");
+    assert.strictEqual(dbCase!.finalization_tx_hash, "0x_break_finalized");
+
+    const dbRec = await recRepo.findByCaseId(breakCaseId, TEST_NETWORK);
+    assert.ok(dbRec);
+    assert.strictEqual(dbRec!.matched, false);
+    assert.strictEqual(dbRec!.status, "BREAK");
+
+    const breaks = await breakRepo.findByCaseId(breakCaseId, TEST_NETWORK);
+    assert.strictEqual(breaks.length, 1);
+    assert.strictEqual(breaks[0].code, "AMOUNT_MISMATCH");
+
+    const disputes = await disputeRepo.findByCaseId(breakCaseId, TEST_NETWORK);
+    assert.strictEqual(disputes.length, 1);
+    assert.strictEqual(disputes[0].dispute_commitment, "3".repeat(64));
+
+    const resolutions = await resolutionRepo.findByCaseId(breakCaseId, TEST_NETWORK);
+    assert.strictEqual(resolutions.length, 1);
+    assert.strictEqual(resolutions[0].resolution_commitment, "4".repeat(64));
+
+    // Replay older event (e.g. ObservationRecorded or CaseBroken) - status must NOT regress from FINALIZED
+    const replayedObs = await synchronizer.syncEvent(lifecycleEvents[1]);
+    assert.strictEqual(replayedObs, true);
+
+    const postReplayCase = await caseRepo.findById(breakCaseId, TEST_NETWORK);
+    assert.strictEqual(postReplayCase!.status, "FINALIZED");
+  });
 });
+
 

@@ -57,6 +57,10 @@ export class SettlementStateSynchronizer {
       cursor: event.cursor,
     });
 
+    if (event.type === "ObserverAdded" || event.type === "ObserverRemoved") {
+      return true;
+    }
+
     if (!event.caseId) {
       return false;
     }
@@ -73,6 +77,32 @@ export class SettlementStateSynchronizer {
             submission_status: "CONFIRMED",
             confirmed_at_ledger: event.ledger,
           });
+        } else {
+          const owner = String(event.payload["owner"] || "");
+          const counterparty = event.payload["counterparty"] ? String(event.payload["counterparty"]) : null;
+          const expiresAtLedger = Number(event.payload["expiresAtLedger"] || 0);
+          const now = new Date();
+          await this.caseRepo.insert({
+            id: caseId,
+            network: this.network,
+            contract_id: event.contractId,
+            owner,
+            counterparty,
+            trade_reference: String(event.payload["tradeReference"] || `CHAIN-${caseId.slice(0, 8)}`),
+            asset: String(event.payload["asset"] || "UNKNOWN"),
+            amount: String(event.payload["amount"] || "0"),
+            expected_destination: String(event.payload["expectedDestination"] || owner),
+            reference: event.payload["reference"] ? String(event.payload["reference"]) : null,
+            terms_commitment: String(event.payload["termsCommitment"] || caseId),
+            expires_at_ledger: expiresAtLedger,
+            status: "OPEN",
+            create_tx_hash: event.txHash,
+            created_at_ledger: event.ledger,
+            submission_status: "CONFIRMED",
+            confirmed_at_ledger: event.ledger,
+            created_at: now,
+            updated_at: now,
+          });
         }
         return true;
       }
@@ -85,10 +115,33 @@ export class SettlementStateSynchronizer {
             confirmed_at_ledger: event.ledger,
           });
         }
-        await this.obsRepo.updateChainReferences(caseId, this.network, {
-          observation_tx_hash: event.txHash,
-          confirmed_at_ledger: event.ledger,
-        });
+        const existingObs = await this.obsRepo.findByCaseId(caseId, this.network);
+        if (existingObs) {
+          await this.obsRepo.updateChainReferences(caseId, this.network, {
+            observation_tx_hash: event.txHash,
+            confirmed_at_ledger: event.ledger,
+          });
+        } else {
+          const observer = String(event.payload["observer"] || "");
+          const txHash = String(event.payload["txHash"] || event.txHash);
+          const observedLedger = Number(event.payload["observedLedger"] || event.ledger);
+          const obsCommitment = String(event.payload["observationCommitment"] || event.txHash);
+          await this.obsRepo.insert({
+            network: this.network,
+            case_id: caseId,
+            observer,
+            tx_hash: txHash,
+            observed_ledger: observedLedger,
+            observation_commitment: obsCommitment,
+            observation_tx_hash: event.txHash,
+            confirmed_at_ledger: event.ledger,
+            asset: String(event.payload["asset"] || "UNKNOWN"),
+            amount: String(event.payload["amount"] || "0"),
+            destination: String(event.payload["destination"] || observer),
+            status: "SUCCESS",
+            observed_at: new Date(),
+          });
+        }
         return true;
       }
 

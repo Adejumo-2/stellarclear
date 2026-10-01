@@ -165,4 +165,93 @@ describe("Indexer Service - Settlement State Synchronization", () => {
     assert.strictEqual(replayedCase?.status, "FINALIZED");
     assert.strictEqual(replayedCase?.finalization_tx_hash, "0x_finalize_tx_chain");
   });
+
+  it("discovers on-chain case and observation when no prior database record exists", async () => {
+    const { caseRepo, obsRepo, synchronizer } = setup();
+    const externalCaseId = "2020202020202020202020202020202020202020202020202020202020202020";
+
+    // 1. Process CaseCreated for an unrecorded case
+    const caseCreatedEvent: DecodedContractEvent = {
+      type: "CaseCreated",
+      contractId: TEST_CONTRACT_ID,
+      ledger: 888000,
+      txHash: "0x_ext_create_tx",
+      cursor: "cursor_ext_1",
+      topicXdr: "AAAAAA==",
+      dataXdr: "AAAAAA==",
+      caseId: externalCaseId,
+      payload: {
+        caseId: externalCaseId,
+        owner: "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFTGOBKGOTQTV4HXY5SLQ",
+        counterparty: "GA2C5RFPE6GCKMY3US5PAB6UZLKIGSPIUKSLRB6ZN7JIBKTRUXZLVTH5",
+        tradeReference: "TR-CHAIN-DISCOVERED",
+        asset: "USDC:GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+        amount: "75000.00",
+        expectedDestination: "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFTGOBKGOTQTV4HXY5SLQ",
+        termsCommitment: "d".repeat(64),
+        expiresAtLedger: 999999,
+      },
+    };
+
+    const caseSynced = await synchronizer.syncEvent(caseCreatedEvent);
+    assert.strictEqual(caseSynced, true);
+
+    const createdCase = await caseRepo.findById(externalCaseId, TEST_NETWORK);
+    assert.ok(createdCase);
+    assert.strictEqual(createdCase!.id, externalCaseId);
+    assert.strictEqual(createdCase!.trade_reference, "TR-CHAIN-DISCOVERED");
+    assert.strictEqual(createdCase!.status, "OPEN");
+    assert.strictEqual(createdCase!.submission_status, "CONFIRMED");
+    assert.strictEqual(createdCase!.create_tx_hash, "0x_ext_create_tx");
+    assert.strictEqual(Number(createdCase!.confirmed_at_ledger), 888000);
+
+    // 2. Process ObservationRecorded for unrecorded observation
+    const obsEvent: DecodedContractEvent = {
+      type: "ObservationRecorded",
+      contractId: TEST_CONTRACT_ID,
+      ledger: 888500,
+      txHash: "0x_ext_obs_tx",
+      cursor: "cursor_ext_2",
+      topicXdr: "AAAAAA==",
+      dataXdr: "AAAAAA==",
+      caseId: externalCaseId,
+      payload: {
+        caseId: externalCaseId,
+        observer: "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFTGOBKGOTQTV4HXY5SLQ",
+        txHash: "0x_payment_tx",
+        observedLedger: 888400,
+        observationCommitment: "e".repeat(64),
+        asset: "USDC:GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+        amount: "75000.00",
+        destination: "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFTGOBKGOTQTV4HXY5SLQ",
+      },
+    };
+
+    const obsSynced = await synchronizer.syncEvent(obsEvent);
+    assert.strictEqual(obsSynced, true);
+
+    const createdObs = await obsRepo.findByCaseId(externalCaseId, TEST_NETWORK);
+    assert.ok(createdObs);
+    assert.strictEqual(createdObs!.case_id, externalCaseId);
+    assert.strictEqual(createdObs!.observer, "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFTGOBKGOTQTV4HXY5SLQ");
+    assert.strictEqual(createdObs!.observation_tx_hash, "0x_ext_obs_tx");
+    assert.strictEqual(Number(createdObs!.confirmed_at_ledger), 888500);
+
+    // 3. Process ObserverAdded/ObserverRemoved events
+    const observerEvent: DecodedContractEvent = {
+      type: "ObserverAdded",
+      contractId: TEST_CONTRACT_ID,
+      ledger: 888600,
+      txHash: "0x_observer_tx",
+      cursor: "cursor_ext_3",
+      topicXdr: "AAAAAA==",
+      dataXdr: "AAAAAA==",
+      payload: {
+        observer: "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFTGOBKGOTQTV4HXY5SLQ",
+      },
+    };
+    const observerSynced = await synchronizer.syncEvent(observerEvent);
+    assert.strictEqual(observerSynced, true);
+  });
 });
+

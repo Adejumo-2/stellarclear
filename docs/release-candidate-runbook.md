@@ -13,14 +13,15 @@ Before promoting any release candidate build to production, the automated releas
 npm run verify:release
 ```
 
-The pipeline executes seven sequential validation stages:
+The pipeline executes eight sequential validation stages:
 1. **Build Validation**: Compiles all TypeScript packages (`schemas`, `proof`, `db`, `sdk`, `settlement-registry`) and services (`api`, `indexer`, `matcher`).
 2. **Strict Typecheck**: Runs TypeScript compiler across all packages and test suites in strict mode with 0 errors.
-3. **Unit Test Suite**: Exercises schemas, canonical serialization, matcher decimal normalization, break taxonomy, and database client repositories.
-4. **API Service Suite**: Validates all HTTP endpoints, Zod schema validations, idempotency replays, dispute workflows, and sanitized error responses.
-5. **Indexer Sync Suite**: Verifies idempotent Soroban contract event ingestion, ledger sequence checkpoints, and DB state sync.
-6. **Cross-Layer Consistency Suite**: Confirms mathematical equality: `Database state == Indexer state == On-chain state == SettlementProof`.
-7. **Live Contract Integration Suite**: Exercises the full lifecycle against deployed Soroban contract bindings.
+3. **Unit & Contract Release Suite**: Exercises schemas, canonical serialization, matcher decimal normalization, break taxonomy, database client repositories, and pinned SettlementRegistry release metadata.
+4. **API Service & Operations Suite**: Validates all HTTP endpoints, Zod schema validations, idempotency replays, dispute workflows, sanitized error responses, and operational diagnostic probes.
+5. **Security & Replay Hardening Suite**: Evaluates production input validation bounds, idempotency key mismatch handling, and cryptographic proof tamper detection.
+6. **Indexer Sync Suite**: Verifies idempotent Soroban contract event ingestion, ledger sequence checkpoints, and DB state sync.
+7. **Cross-Layer Consistency Suite**: Confirms mathematical equality: `Database state == Indexer state == On-chain state == SettlementProof`.
+8. **Live Contract Integration Suite**: Exercises the full lifecycle against deployed Soroban contract bindings.
 
 ---
 

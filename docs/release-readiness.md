@@ -18,10 +18,11 @@ bash scripts/release-check.sh
 1. **Environment Verification**: Confirms Node.js `>=22.12.0` and npm dependencies are present.
 2. **Clean Build**: Recompiles all TypeScript packages (`@stellarclear/schemas`, `@stellarclear/proof`, `settlement-registry`, `@stellarclear/db`, `@stellarclear/sdk`) and services (`@stellarclear/api`, `@stellarclear/indexer`, `@stellarclear/matcher`).
 3. **Strict Typecheck**: Runs `tsc --noEmit` across all workspaces with zero permitted type errors.
-4. **Unit Test Suite**: Executes unit tests across domain schemas, canonical commitments, decimal normalization, and SDK bindings.
-5. **API Test Suite**: Tests REST API endpoints, Zod schema validations, idempotency handling, readiness checks, and consistency queries.
-6. **Indexer Test Suite**: Validates event decoding, durable cursor checkpoints, and idempotent database synchronization.
-7. **End-to-End Integration Suite**: Validates complete settlement lifecycles (Match, Break, Dispute, Resolution, Proof verification, and On-chain finalization) against Soroban contract state.
+4. **Unit & Contract Release Suite**: Executes unit tests across domain schemas, canonical commitments, decimal normalization, SDK bindings, and pinned contract release metadata.
+5. **API & Operations Suite**: Tests REST API endpoints, Zod schema validations, idempotency handling, readiness checks, consistency queries, and operational health diagnostics.
+6. **Security & Replay Hardening Suite**: Tests input sanitization, payload bounds, idempotency tampering, and security regression matrices.
+7. **Indexer Test Suite**: Validates event decoding, durable cursor checkpoints, and idempotent database synchronization.
+8. **End-to-End Integration Suite**: Validates complete settlement lifecycles (Match, Break, Dispute, Resolution, Proof verification, and On-chain finalization) against Soroban contract state.
 
 ---
 

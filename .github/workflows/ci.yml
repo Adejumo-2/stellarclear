@@ -86,6 +86,25 @@ jobs:
       - name: Run indexer test suites
         run: npm run test:indexer
 
+  test-security:
+    name: Security & Replay Hardening Regression Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run security test suites
+        run: npm run test:security
+
   test-integration:
     name: End-to-End & Live Soroban Integration Tests
     runs-on: ubuntu-latest

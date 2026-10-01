@@ -21,22 +21,32 @@
 
 ---
 
+## The Problem
+
+Traditional financial settlements between trading counterparties rely on manual reconciliation across disjoint spreadsheets and siloed internal databases, resulting in delayed dispute discovery, conflicting records, and unanchored audit trails. When payments execute on the Stellar network, off-chain bilateral trade agreements and on-chain ledger transfers still require deterministic, automated matching without exposing confidential commercial terms to public ledgers.
+
+StellarClear solves this by automatically comparing bilateral settlement commitments against observed Stellar payments, mathematically classifying breaks, and anchoring tamper-evident cryptographic commitments to Soroban smart contracts.
+
+> **Non-Custodial Boundary**: StellarClear **does NOT** move funds, hold user custody, or run escrow mechanisms. All token and asset transfers occur directly between counterparties' own Stellar accounts. StellarClear operates solely as an off-chain reconciliation engine, proof generator, and on-chain evidentiary audit anchor.
+
+---
+
 ## Overview
 
-StellarClear provides cryptographic certainty and operational visibility for institutional and peer-to-peer financial settlements on the Stellar network.
+StellarClear provides cryptographic certainty and operational visibility for institutional and peer-to-peer financial settlements on Stellar.
 
 The protocol continuously compares:
 1. **Expected Settlement Instructions** (off-chain bilateral agreements, trade parameters, deadlines), and
-2. **Observed Stellar Transactions** (on-chain payments, ledger timestamps, asset transfers),
+2. **Observed Stellar Transactions** (on-chain payments, ledger sequences, timestamps, asset transfers),
 
 and produces:
-- **Deterministic Reconciliation**: Automated match verification or precise break classification (asset mismatch, amount variance, destination routing errors, late settlements).
+- **Deterministic Reconciliation**: Automated exact match verification or standardized break classification.
 - **Cryptographic Commitments**: SHA-256 canonical commitments binding off-chain terms to on-chain state without leaking confidential trade terms.
-- **On-Chain Soroban Anchoring**: Immutable settlement records in the `SettlementRegistry` contract.
-- **Multi-Party Attestation**: Digital confirmations from owners, counterparties, and independent observers.
-- **Portable Settlement Proofs**: Self-contained JSON-LD/schema proofs independently verifiable offline and against live Soroban state.
+- **On-Chain Soroban Anchoring**: Immutable settlement evidence recorded in the `SettlementRegistry` contract.
+- **Multi-Party Attestation**: Cryptographic confirmations signed by owners, counterparties, and independent observers.
+- **Portable Settlement Proofs**: Self-contained JSON artifacts verifiable offline and against live Soroban state.
 
-> **Contract Layer**: The smart contract implementation is hosted in [`StellarClear/stellarclear-contract`](https://github.com/StellarClear/stellarclear-contract) (`SettlementRegistry`). This monorepo consumes generated TypeScript bindings in `packages/settlement-registry`.
+> **Contract Repository**: The smart contract implementation is hosted in [`StellarClear/stellarclear-contract`](https://github.com/StellarClear/stellarclear-contract) (`SettlementRegistry`). This monorepo consumes generated TypeScript bindings in `packages/settlement-registry`.
 
 ---
 
@@ -44,7 +54,7 @@ and produces:
 
 StellarClear combines high-throughput off-chain processing with tamper-evident on-chain anchoring:
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                           Off-Chain Layer                               │
 │  ┌───────────────────────┐       ┌───────────────────────────────────┐  │
@@ -69,12 +79,232 @@ StellarClear combines high-throughput off-chain processing with tamper-evident o
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
-- **API Service (`services/api`)**: Dispatcher providing REST endpoints for case creation, observation submissions, reconciliation, attestations, disputes, and diagnostic health checks.
-- **Matcher Service (`services/matcher`)**: Pure deterministic reconciliation engine performing exact decimal amount arithmetic and break code classification.
+- **API Service (`services/api`)**: Dispatcher providing REST endpoints for case creation, observations, reconciliation, attestations, disputes, and operational health diagnostics.
+- **Matcher Service (`services/matcher`)**: Pure deterministic reconciliation engine performing exact string/decimal arithmetic and break classification.
 - **Indexer Service (`services/indexer`)**: Streaming ledger ingestion service that decodes Soroban contract events and maintains durable checkpoints.
-- **Proof Package (`packages/proof`)**: Canonical deterministic JSON serialization and cryptographic commitment generation.
-- **Database Package (`packages/db`)**: Repository abstraction supporting PostgreSQL with strict idempotency and deduplication.
+- **Proof Package (`packages/proof`)**: Canonical deterministic JSON serialization (`RFC 8785`) and SHA-256 commitment generation.
+- **Database Package (`packages/db`)**: Repository abstraction supporting PostgreSQL with strict idempotency and state deduplication.
 - **Client SDK (`packages/sdk`)**: TypeScript client library with typed contract bindings, error normalization, and lifecycle helpers.
+
+---
+
+## How It Works
+
+### Worked Example: Bilateral Settlement Lifecycle
+
+Consider **Company A** (`GBRP...`) and **Company B** (`GA5Z...`) agreeing off-chain that Company A will pay **1,000 USDC** to Company B before ledger sequence `2000000`:
+
+1. **Case Creation (`OPEN`)**:
+   - Company A registers the expected settlement terms via API or SDK.
+   - The canonical `termsCommitment` hash is generated and anchored on Soroban via `create_case`.
+2. **Transaction Observation (`OBSERVED`)**:
+   - Company A executes a standard Stellar payment of 1,000 USDC directly to Company B.
+   - The payment transaction details (`txHash`, `amount`, `asset`, `destination`, `ledger`) are ingested.
+   - The canonical `observationCommitment` is anchored on Soroban via `record_observation`.
+3. **Deterministic Reconciliation (`MATCHED` or `BREAK`)**:
+   - The matcher verifies if amount, asset, destination, reference, deadline, and status match agreed terms.
+   - **Clean Match**: Status transitions to `MATCHED`.
+   - **Discrepancy (Break)**: Status transitions to `BREAK` with a standardized `BreakCode` recorded on Soroban via `record_break`.
+4. **Dispute & Resolution Path (If Break occurs)**:
+   - Either counterparty submits a dispute with supporting evidence (`DISPUTED`) via `record_dispute`.
+   - Parties or an authorized arbitrator reach an updated agreement, anchoring a `resolutionCommitment` (`RESOLVED`) via `resolve_dispute`.
+5. **Multi-Party Attestation & Proof Generation**:
+   - Owner, counterparty, or registered observers submit cryptographic signatures (`CaseAttested`).
+   - A self-contained `SettlementProof` bundle is assembled.
+6. **Finalization (`FINALIZED`)**:
+   - The case is finalized on Soroban via `finalize_case`, immutably locking the record against further state modifications.
+
+### State Machine
+
+```
+         ┌───────────────┐
+         │     OPEN      │  (Expected terms anchored on-chain)
+         └───────┬───────┘
+                 │
+                 ▼
+         ┌───────────────┐
+         │   OBSERVED    │  (Payment observed on Stellar ledger)
+         └───────┬───────┘
+                 │
+        Reconciliation Check
+        ┌────────┴────────┐
+        ▼                 ▼
+ ┌─────────────┐   ┌─────────────┐
+ │   MATCHED   │   │    BREAK    │  (Classified with BreakCode)
+ └──────┬──────┘   └──────┬──────┘
+        │                 │
+        │                 ▼
+        │          ┌─────────────┐
+        │          │  DISPUTED   │  (Contested with evidence)
+        │          └──────┬──────┘
+        │                 │
+        │                 ▼
+        │          ┌─────────────┐
+        │          │  RESOLVED   │  (Arbitrated / agreed resolution)
+        │          └──────┬──────┘
+        │                 │
+        └────────┬────────┘
+                 ▼
+         ┌───────────────┐
+         │   FINALIZED   │  (Immutably sealed on Soroban)
+         └───────────────┘
+```
+
+### Standardized Break Taxonomy
+
+When reconciliation fails, the matcher produces one of the following exact `BreakCode` values:
+
+| Break Code | Classification Description |
+| :--- | :--- |
+| `AMOUNT_MISMATCH` | Observed transfer amount differs from the expected agreed amount. |
+| `ASSET_MISMATCH` | Observed Stellar asset code or issuer does not match agreed asset terms. |
+| `DESTINATION_MISMATCH` | Observed payment was transferred to an address other than `expectedDestination`. |
+| `REFERENCE_MISMATCH` | Observed payment memo or reference tag does not match agreed trade reference. |
+| `MISSING_SETTLEMENT` | No matching payment transaction observed before deadline expiration. |
+| `DUPLICATE_SETTLEMENT` | Multiple conflicting payment transactions observed for a single settlement case. |
+| `LATE_SETTLEMENT` | Observed transaction ledger sequence or timestamp occurred after agreed deadline. |
+| `FAILED_TRANSACTION` | Observed Stellar transaction completed with a failed execution status. |
+| `UNEXPECTED_TRANSACTION` | Observed transaction occurred with invalid or unregistered settlement metadata. |
+
+---
+
+## Example Usage
+
+### 1. API Ingestion (`POST /v1/cases`)
+
+**Request**:
+```bash
+curl -X POST http://localhost:3000/v1/cases \
+  -H "Content-Type: application/json" \
+  -d '{
+    "expected": {
+      "caseId": "1212121212121212121212121212121212121212121212121212121212121212",
+      "owner": "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFTGOBKGOTQTV4HXY5SLQ",
+      "counterparty": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+      "tradeReference": "TRADE-EURUSD-001",
+      "asset": "EURC:GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+      "amount": "1000.0000000",
+      "expectedDestination": "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFTGOBKGOTQTV4HXY5SLQ",
+      "reference": "INV-2026-001",
+      "deadline": 2000000
+    }
+  }'
+```
+
+**Response (`201 Created`)**:
+```json
+{
+  "case": {
+    "caseId": "1212121212121212121212121212121212121212121212121212121212121212",
+    "status": "OPEN",
+    "termsCommitment": "a1b2c3d4e5f67890123456789abcdef0123456789abcdef0123456789abcdef0",
+    "createdAt": "2026-10-01T12:00:00.000Z"
+  }
+}
+```
+
+### 2. Client SDK Usage
+
+```typescript
+import { StellarClearClient, Networks } from "@stellarclear/sdk";
+
+// 1. Initialize client
+const client = new StellarClearClient({
+  network: "testnet",
+  networkPassphrase: Networks.TESTNET.networkPassphrase,
+  rpcUrl: "https://soroban-testnet.stellar.org",
+  contractId: "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+});
+
+// 2. Generate deterministic case identifier
+const caseId = client.generateCaseId(
+  "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFTGOBKGOTQTV4HXY5SLQ",
+  "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+  "TRADE-EURUSD-001"
+);
+
+// 3. Query on-chain settlement state
+const onchainCase = await client.getCase(caseId);
+console.log("On-chain Status:", onchainCase?.status);
+```
+
+### 3. Sample Settlement Proof (`SettlementProof`)
+
+```json
+{
+  "protocol": "STELLARCLEAR",
+  "version": "0.1.0",
+  "caseId": "1212121212121212121212121212121212121212121212121212121212121212",
+  "termsCommitment": "a1b2c3d4e5f67890123456789abcdef0123456789abcdef0123456789abcdef0",
+  "observationCommitment": "f0e1d2c3b4a59876543210fedcba9876543210fedcba9876543210fedcba9876",
+  "txHash": "3434343434343434343434343434343434343434343434343434343434343434",
+  "finalizedLedger": 2000100,
+  "result": "MATCHED",
+  "attestations": [
+    {
+      "role": "OWNER",
+      "signer": "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFTGOBKGOTQTV4HXY5SLQ",
+      "signature": "304502210089abcdef...",
+      "attestedAt": "2026-10-01T12:05:00.000Z"
+    },
+    {
+      "role": "COUNTERPARTY",
+      "signer": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+      "signature": "3044022011abcdef...",
+      "attestedAt": "2026-10-01T12:06:00.000Z"
+    }
+  ],
+  "contractId": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+  "network": "testnet"
+}
+```
+
+---
+
+## Trust Model & Privacy Boundary
+
+| Role / Entity | Capabilities & Responsibilities | Trust Assumptions |
+| :--- | :--- | :--- |
+| **Case Owner** | Submits expected settlement instructions and signs owner attestations. | Assumed to agree with trade terms prior to anchoring. |
+| **Counterparty** | Executes payment on Stellar and submits counterparty attestations. | Relies on contract to anchor exact terms hash and dispute rights. |
+| **Observers** | Authorized independent verifiers or automated oracles registered on-chain. | Authorized on-chain by admin; can submit neutral witness attestations. |
+| **Contract Admin** | Configures contract parameters and registers observer public keys. | Multi-sig administrator; cannot mutate existing finalized cases. |
+
+### On-Chain vs. Off-Chain Separation
+
+- **What Goes On-Chain (Soroban `SettlementRegistry`)**:
+  - Deterministic 32-byte SHA-256 hashes (`termsCommitment`, `observationCommitment`, `resolutionCommitment`).
+  - Stellar payment transaction hash (`txHash`) and ledger sequence.
+  - Lifecycle state machine status (`CaseStatus`).
+  - Participant public keys, attestation signatures, and `BreakCode` identifiers.
+- **What Stays Off-Chain (Private Databases)**:
+  - Counterparty identities, account notes, commercial contracts, and trade descriptions.
+  - Raw financial transaction metadata and internal accounting references.
+
+---
+
+## Glossary
+
+- **`termsCommitment`**: SHA-256 cryptographic digest of canonical JSON-serialized expected settlement terms (`STELLARCLEAR/TERMS/V1`).
+- **`observationCommitment`**: SHA-256 cryptographic digest of canonical JSON-serialized observed payment transaction data (`STELLARCLEAR/OBSERVATION/V1`).
+- **`resolutionCommitment`**: SHA-256 cryptographic digest of canonical terms agreed upon during dispute resolution (`STELLARCLEAR/RESOLUTION/V1`).
+- **`Observer`**: An authorized independent third party registered on-chain in `SettlementRegistry` capable of submitting attestations.
+- **`Attestation`**: A cryptographic signature submitted by an owner, counterparty, or observer confirming agreement with a case state.
+- **`BreakCode`**: A standardized machine-readable error code classifying the exact parameter variance during reconciliation.
+- **`Settlement Proof`**: A portable, self-contained JSON artifact proving a settlement occurred, reconciled, and anchored to Soroban.
+
+---
+
+## Status & Limitations
+
+- **Current Version**: `v0.1.0`
+- **Network Deployment**: **Stellar Testnet**
+- **Contract Address**: [`CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC`](https://stellar.expert/explorer/testnet/contract/CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC)
+- **Security Status**: **Unaudited prototype**. Under active development. Do not use for production settlements with real capital without independent third-party smart contract and cryptography audits.
+- **Roadmap & Open Issues**:
+  - [StellarClear/stellarclear-app#2](https://github.com/StellarClear/stellarclear-app/issues/2): Real-time WebSocket event subscription stream for indexer.
+  - [StellarClear/stellarclear-contract#5](https://github.com/StellarClear/stellarclear-contract/issues/5): On-chain observer quorum threshold logic.
+  - [StellarClear/stellarclear-contract#6](https://github.com/StellarClear/stellarclear-contract/issues/6): On-chain dispute expiration TTL enforcement.
 
 ---
 
@@ -112,14 +342,23 @@ stellarclear-app/
 git clone https://github.com/StellarClear/stellarclear-app.git
 cd stellarclear-app
 
-# 2. Install dependencies
-npm install
+# 2. Clean install dependencies
+npm ci
 
 # 3. Build all workspace packages and services
 npm run build
 
 # 4. Run the full test suite (192+ tests)
 npm test
+```
+
+### Run a Demo Case Locally
+
+Execute the in-memory end-to-end multi-party settlement match test suite:
+
+```bash
+# Runs the full bilateral match, attestation, proof, and finalization pipeline
+npm run test:integration
 ```
 
 ### Modular Test Pipelines
@@ -156,11 +395,22 @@ cp .env.example .env
 
 ---
 
-## Security & Privacy Boundary
+## Documentation
 
-The protocol maintains strict separation between private trade details and public ledger anchors:
-- **Private Data (Off-Chain)**: Trade references, exact counterparty information, payment descriptions, and internal bookkeeping details remain in private off-chain databases.
-- **Public Anchors (On-Chain)**: Only deterministic SHA-256 commitments (`termsCommitment`, `observationCommitment`, `resolutionCommitment`), Stellar transaction references, case lifecycle states, and participant attestations are written to Soroban.
+| Document | Description |
+| :--- | :--- |
+| [`docs/api.md`](./docs/api.md) | REST API endpoint reference, request/response schemas, idempotency semantics, and error codes. |
+| [`docs/architecture.md`](./docs/architecture.md) | System architecture, component responsibilities, layer separation, and end-to-end data flow. |
+| [`docs/deployment.md`](./docs/deployment.md) | Deployment guide for development, staging (Testnet), and production environments with Docker configurations. |
+| [`docs/integration-verification.md`](./docs/integration-verification.md) | Guide for executing unit, API, indexer, security regression, and live Soroban test suites. |
+| [`docs/operations.md`](./docs/operations.md) | Production operations, health/readiness probes, telemetry, cursor monitoring, and incident response playbooks. |
+| [`docs/production-release-procedure.md`](./docs/production-release-procedure.md) | Standard operating procedure for validating, pinning, deploying, and verifying production releases. |
+| [`docs/proof-verification.md`](./docs/proof-verification.md) | Technical specification for canonical domain serialization, commitments, and offline/online proof verification. |
+| [`docs/release-candidate-runbook.md`](./docs/release-candidate-runbook.md) | Step-by-step release candidate verification, operational diagnostic gates, and rollback runbook. |
+| [`docs/release-readiness.md`](./docs/release-readiness.md) | Pre-flight release verification criteria, artifact pinning requirements, and test audit checklists. |
+| [`docs/settlement-lifecycle.md`](./docs/settlement-lifecycle.md) | State machine specification, lifecycle transitions, break taxonomy, and dispute/arbitration workflows. |
+| [`docs/soroban-integration.md`](./docs/soroban-integration.md) | Soroban smart contract interface details, TypeScript bindings integration, and event streaming. |
+| [`docs/troubleshooting.md`](./docs/troubleshooting.md) | Diagnostic workflows for resolving reconciliation breaks, RPC connectivity issues, and database sync problems. |
 
 ---
 

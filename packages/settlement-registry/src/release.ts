@@ -12,6 +12,9 @@ export interface SettlementRegistryRelease {
   name: string;
   version: string;
   releaseTag: string;
+  contractRepository?: string;
+  gitCommit?: string;
+  artifactFile?: string;
   wasmHash: string;
   specVersion: number;
   deployedNetworks: Record<string, ContractNetworkDeployment>;
@@ -22,7 +25,10 @@ export const SETTLEMENT_REGISTRY_RELEASE: SettlementRegistryRelease = {
   name: "settlement_registry",
   version: "0.1.0",
   releaseTag: "v0.1.0",
-  wasmHash: "a7c8e9f14309c62b53b8112c3f848b8ec01b87b70743b18536df527f311cfa59",
+  contractRepository: "https://github.com/StellarClear/stellarclear-contract",
+  gitCommit: "fcd48d20736dda40e400e420c6e984a707f80e76",
+  artifactFile: "artifacts/v0.1.0/settlement_registry.wasm",
+  wasmHash: "1018a81b1ac95046cb00466ceda7ee347204c08b71b1c51b3c9611dd32215d66",
   specVersion: 1,
   deployedNetworks: {
     testnet: {

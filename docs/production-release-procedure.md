@@ -61,7 +61,10 @@ export const SETTLEMENT_REGISTRY_RELEASE = {
   name: "settlement_registry",
   version: "0.1.0",
   releaseTag: "v0.1.0",
-  wasmHash: "a7c8e9f14309c62b53b8112c3f848b8ec01b87b70743b18536df527f311cfa59",
+  contractRepository: "https://github.com/StellarClear/stellarclear-contract",
+  gitCommit: "fcd48d20736dda40e400e420c6e984a707f80e76",
+  artifactFile: "artifacts/v0.1.0/settlement_registry.wasm",
+  wasmHash: "1018a81b1ac95046cb00466ceda7ee347204c08b71b1c51b3c9611dd32215d66",
   specVersion: 1,
   deployedNetworks: {
     testnet: {
@@ -90,8 +93,12 @@ export const SETTLEMENT_REGISTRY_RELEASE = {
 };
 ```
 
+### Contract Provenance Lineage:
+- **Artifact Build/Source Provenance Commit**: `fcd48d20736dda40e400e420c6e984a707f80e76` in `stellarclear-contract` (the specific source commit from which the released WASM binary was built).
+- **Release Tag & Final Merge Commit**: `v0.1.0` tag pointing to `3978e21cebb0a60bd3899e7b48d7b96e40479a3c` in `stellarclear-contract` (the PR merge commit finalizing documentation and release verification).
+
 ### Verification Checklist:
-- [ ] Contract bytecode hash matches `wasmHash`.
+- [ ] Contract bytecode hash matches `wasmHash` (`1018a81b1ac95046cb00466ceda7ee347204c08b71b1c51b3c9611dd32215d66`).
 - [ ] Contract address on target network is a valid 56-character StrKey (`C...`).
 - [ ] TypeScript bindings in `packages/settlement-registry` are generated from the target WASM.
 - [ ] Network compatibility passes `verifyContractReleaseCompatibility(network, contractId)`.
@@ -143,7 +150,7 @@ Expected response:
     "name": "settlement_registry",
     "version": "0.1.0",
     "releaseTag": "v0.1.0",
-    "wasmHash": "a7c8e9f14309c62b53b8112c3f848b8ec01b87b70743b18536df527f311cfa59",
+    "wasmHash": "1018a81b1ac95046cb00466ceda7ee347204c08b71b1c51b3c9611dd32215d66",
     "specVersion": 1,
     "contractId": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
     "network": "testnet",

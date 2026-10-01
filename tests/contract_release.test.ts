@@ -17,7 +17,22 @@ describe("SettlementRegistry - Pinned Contract Release", () => {
     assert.strictEqual(release.version, "0.1.0");
     assert.strictEqual(release.releaseTag, "v0.1.0");
     assert.strictEqual(release.specVersion, 1);
-    assert.ok(release.wasmHash.length === 64);
+    assert.strictEqual(
+      release.wasmHash,
+      "1018a81b1ac95046cb00466ceda7ee347204c08b71b1c51b3c9611dd32215d66"
+    );
+    assert.strictEqual(
+      release.gitCommit,
+      "fcd48d20736dda40e400e420c6e984a707f80e76"
+    );
+    assert.strictEqual(
+      release.contractRepository,
+      "https://github.com/StellarClear/stellarclear-contract"
+    );
+    assert.strictEqual(
+      release.artifactFile,
+      "artifacts/v0.1.0/settlement_registry.wasm"
+    );
     assert.ok(release.features.includes("case_creation"));
     assert.ok(release.features.includes("observation_anchoring"));
     assert.ok(release.features.includes("match_reconciliation"));

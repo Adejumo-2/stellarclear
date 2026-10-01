@@ -5,8 +5,14 @@
   "type": "module",
   "description": "Open-source Stellar-native settlement evidence and reconciliation protocol",
   "workspaces": [
-    "packages/*",
-    "services/*"
+    "packages/schemas",
+    "packages/proof",
+    "packages/db",
+    "packages/settlement-registry",
+    "packages/sdk",
+    "services/matcher",
+    "services/indexer",
+    "services/api"
   ],
   "scripts": {
     "build": "npm run --workspaces --if-present build",

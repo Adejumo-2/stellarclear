@@ -1,4 +1,4 @@
-import { Buffer } from "node:buffer";
+import { Buffer } from "buffer";
 import type { DecodedContractEvent, SettlementEventType } from "./types.js";
 import { contractToBreakCode, contractToAttestationRole } from "@stellarclear/sdk";
 import type {

@@ -13,15 +13,28 @@ tests/
 ├── integration/
 │   ├── helpers/
 │   │   └── soroban.ts                      # Live Soroban simulation & anchoring helper
+│   ├── pinned_release_lifecycle.test.ts    # Authoritative v0.1.0 release metadata & lifecycle
+│   ├── release_candidate.test.ts           # RC full-stack happy & dispute path regression
+│   ├── release_upgrade_compatibility.test.ts # Backward compatibility and schema evolution
+│   ├── consistency.test.ts                 # Cross-layer consistency verification
+│   ├── failure-recovery.test.ts            # RPC failure and state recovery scenarios
+│   ├── replay.test.ts                      # Replay protection and mutation safety
 │   ├── settlement_live.test.ts             # Complete live match and dispute workflows
 │   ├── settlement_match_live.test.ts       # Multi-party attestation & proof verification
 │   ├── settlement_break_live.test.ts       # Break classification on Soroban
 │   ├── settlement_dispute_live.test.ts     # Dispute opening & resolution arbitration
-│   ├── api_settlement_lifecycle.test.ts    # End-to-end API HTTP lifecycle test
-│   ├── api_match_workflow.test.ts          # API match verification workflow
-│   ├── api_break_workflow.test.ts          # API break detection & diagnostics
-│   └── api_dispute_workflow.test.ts        # API dispute & resolution pipeline
-├── api_*.test.ts                           # Fastify API endpoint tests
+│   ├── settlement_lifecycle.test.ts        # End-to-end settlement lifecycle
+│   ├── settlement_match.test.ts            # Match workflow integration
+│   ├── settlement_break.test.ts            # Break detection integration
+│   └── settlement_dispute.test.ts          # Dispute resolution integration
+├── security/
+│   ├── api_security.test.ts                # API input boundaries and validation security
+│   ├── proof_security.test.ts              # Settlement proof tamper rejection
+│   └── replay_security.test.ts             # Idempotency route isolation and key protection
+├── api_*.test.ts                           # REST API endpoint and lifecycle tests
+├── operations_health.test.ts               # Structured health and diagnostics tests
+├── contract_release.test.ts                # SettlementRegistry release metadata tests
+├── idempotency_security.test.ts            # Idempotency conflict & replay tests
 ├── sdk_*.test.ts                           # SDK client & SettlementRegistry bindings tests
 ├── proof_*.test.ts                         # Canonical serialization & proof verification tests
 ├── matcher_*.test.ts                       # Decimal amounts & break code rule tests
@@ -43,16 +56,25 @@ npm test
 npm run typecheck
 ```
 
-### Running Specific Test Groups
+### Modular Test Pipelines
 ```bash
-# Run only live Soroban integration tests
-npx tsc -p tests/tsconfig.json && node --test tests/dist/integration/*live*.test.js
+# Unit & contract release tests
+npm run test:unit
 
-# Run proof verifier tests
-npx tsc -p tests/tsconfig.json && node --test tests/dist/proof_*.test.js
+# API endpoints & operational health diagnostics
+npm run test:api
 
-# Run API endpoint tests
-npx tsc -p tests/tsconfig.json && node --test tests/dist/api_*.test.js
+# Security & replay hardening regression suites
+npm run test:security
+
+# Indexer event ingestion & state synchronization
+npm run test:indexer
+
+# End-to-end & live Soroban integration suites
+npm run test:integration
+
+# Full 8-stage pre-release readiness pipeline
+npm run verify:release
 ```
 
 ---

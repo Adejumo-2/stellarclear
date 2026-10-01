@@ -87,8 +87,9 @@ npm run build
 npm test
 
 # Run modular test pipelines
-npm run test:unit         # Unit tests (schemas, proof, matcher, db, sdk)
-npm run test:api          # API endpoints & lifecycle verification
+npm run test:unit         # Unit and contract release tests
+npm run test:api          # API endpoints & operational diagnostics
+npm run test:security     # Security & replay hardening regression tests
 npm run test:indexer      # Indexer & event synchronization
 npm run test:integration  # Live Soroban contract integration tests
 

@@ -14,6 +14,8 @@ The StellarClear API service provides endpoints to manage the end-to-end settlem
 |:---|:---|:---|
 | `GET` | `/health` | Service health status |
 | `GET` | `/ready` | Service readiness and database connectivity |
+| `GET` | `/v1/operations/diagnostics` | Deep settlement pipeline health, DB latency, contract RPC reachability, and ledger indexing status |
+| `GET` | `/v1/version` | Authoritative protocol version, pinned SettlementRegistry release metadata, and compatibility status |
 | `POST` | `/v1/cases` | Create a new settlement case and anchor on Soroban |
 | `GET` | `/v1/cases/:caseId` | Retrieve a settlement case by 32-byte hex ID |
 | `GET` | `/v1/cases/:caseId/onchain` | Query authoritative on-chain contract state |

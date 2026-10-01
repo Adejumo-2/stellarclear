@@ -139,12 +139,96 @@ describe("Indexer Service - Ingestion, Idempotency & Recovery", () => {
     assert.strictEqual(res.ingestedCount, 2);
     assert.strictEqual(res.errors.length, 0);
 
-    // Case status should now be updated to MATCHED
+    // Case status and chain references should now be updated
     const updatedCase = await caseRepo.findById(VALID_CASE_ID, "testnet");
     assert.strictEqual(updatedCase?.status, "MATCHED");
+    assert.strictEqual(updatedCase?.observation_tx_hash, VALID_TX_HASH);
+    assert.strictEqual(updatedCase?.reconciliation_tx_hash, VALID_TX_HASH);
+    assert.strictEqual(Number(updatedCase?.confirmed_at_ledger), 1002);
 
     // Cursor should be at ledger 1002
     assert.strictEqual(indexer.cursor.ledger, 1002);
+  });
+
+  it("ingests full settlement lifecycle events updating all chain references", async () => {
+    const dbClient = createDatabaseClient({
+      databaseUrl: "postgresql://postgres:postgres@localhost:5432/stellarclear_test",
+      network: "testnet",
+    });
+
+    const caseRepo = new CaseRepository(dbClient);
+    await caseRepo.insert({
+      id: "case-lifecycle-999",
+      network: "testnet",
+      owner: VALID_OWNER,
+      trade_reference: "TR-LIFECYCLE-999",
+      asset: "USDC",
+      amount: "500.0000000",
+      expected_destination: VALID_OWNER,
+      terms_commitment: "case-lifecycle-999",
+      expires_at_ledger: 2000,
+      status: "OPEN",
+      created_at: new Date(),
+      updated_at: new Date(),
+    });
+
+    const indexer = new IndexerService(dbClient, {
+      network: "testnet",
+      contractId: VALID_CONTRACT_ID,
+    });
+    await indexer.init();
+
+    const lifecycleBatch: RawStellarEvent[] = [
+      {
+        type: "contract",
+        ledger: 1010,
+        contractId: VALID_CONTRACT_ID,
+        id: "0000001010-0000000001",
+        txHash: "tx_create_hash_999",
+        topic: ["CaseCreated", "case-lifecycle-999"],
+        value: { owner: VALID_OWNER, expires_at_ledger: 2000 },
+      },
+      {
+        type: "contract",
+        ledger: 1011,
+        contractId: VALID_CONTRACT_ID,
+        id: "0000001011-0000000001",
+        txHash: "tx_obs_hash_999",
+        topic: ["ObservationRecorded", "case-lifecycle-999"],
+        value: { observer: VALID_OBSERVER, tx_hash: "tx_obs_hash_999", observed_ledger: 1011 },
+      },
+      {
+        type: "contract",
+        ledger: 1012,
+        contractId: VALID_CONTRACT_ID,
+        id: "0000001012-0000000001",
+        txHash: "tx_attest_hash_999",
+        topic: ["AttestationSubmitted", "case-lifecycle-999"],
+        value: { attestor: VALID_OWNER, role: "OWNER" },
+      },
+      {
+        type: "contract",
+        ledger: 1013,
+        contractId: VALID_CONTRACT_ID,
+        id: "0000001013-0000000001",
+        txHash: "tx_final_hash_999",
+        topic: ["CaseFinalized", "case-lifecycle-999"],
+        value: { finalized_at_ledger: 1013 },
+      },
+    ];
+
+    const res = await indexer.ingestBatch(lifecycleBatch);
+    assert.strictEqual(res.ingestedCount, 4);
+    assert.strictEqual(res.errors.length, 0);
+
+    const finalizedCase = await caseRepo.findById("case-lifecycle-999", "testnet");
+    assert.strictEqual(finalizedCase?.status, "FINALIZED");
+    assert.strictEqual(finalizedCase?.create_tx_hash, "tx_create_hash_999");
+    assert.strictEqual(finalizedCase?.observation_tx_hash, "tx_obs_hash_999");
+    assert.strictEqual(finalizedCase?.attestation_tx_hash, "tx_attest_hash_999");
+    assert.strictEqual(finalizedCase?.finalization_tx_hash, "tx_final_hash_999");
+    assert.strictEqual(Number(finalizedCase?.finalized_at_ledger), 1013);
+    assert.strictEqual(indexer.cursor.ledger, 1013);
   });
 
   it("safely handles duplicate replay without duplicating rows or failing", async () => {

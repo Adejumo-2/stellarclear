@@ -119,12 +119,6 @@ The protocol strictly separates private trade data from public on-chain records:
 
 ---
 
-## Funding (Drips)
-
-This repo is claimable on [Drips](https://www.drips.network). Ownership is proven via `FUNDING.json` on the default branch (`main`).
-
----
-
 ## Contributing
 
 See [`CONTRIBUTING.md`](./CONTRIBUTING.md).

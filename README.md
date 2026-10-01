@@ -10,7 +10,7 @@
 [![CI](https://github.com/StellarClear/stellarclear/actions/workflows/ci.yml/badge.svg)](https://github.com/StellarClear/stellarclear/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](./LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue.svg)](https://www.typescriptlang.org/)
-[![Soroban](https://img.shields.io/badge/Soroban-v22-purple.svg)](https://soroban.stellar.org)
+[![Soroban](https://img.shields.io/badge/Soroban-v27.0-purple.svg)](https://stellar.org/soroban)
 [![Version](https://img.shields.io/badge/version-0.1.0-green.svg)](https://github.com/StellarClear/stellarclear/releases/tag/v0.1.0)
 
 <p align="center">
@@ -168,7 +168,8 @@ The protocol maintains strict separation between private trade details and publi
 
 | Maintainer | Role | GitHub |
 | :--- | :--- | :--- |
-| **Smog and Adejumo** | Lead Protocol Engineer | [@smog123](https://github.com/smog123) / [@Adejumo-2](https://github.com/Adejumo-2) |
+| **Adejumo** | Lead Developer & Maintainer | [@Adejumo-2](https://github.com/Adejumo-2) |
+| **Smog** | Core Contributor & Maintainer | [@smog123](https://github.com/smog123) |
 
 ---
 

@@ -31,6 +31,9 @@ import {
   ReconciliationRepository,
   BreakRepository,
   AttestationRepository,
+  DisputeRepository,
+  ResolutionRepository,
+  DisputeExpirationRepository,
 } from "@stellarclear/db";
 import { validateApiConfig, type ApiConfig, type ApiConfigInput } from "./config.js";
 import type { HttpRequest, HttpResponse, VersionResponse } from "./types.js";
@@ -66,6 +69,9 @@ export class ApiServer {
   private recRepo: ReconciliationRepository;
   private breakRepo: BreakRepository;
   private attestationRepo: AttestationRepository;
+  public readonly disputeRepo: DisputeRepository;
+  public readonly resolutionRepo: ResolutionRepository;
+  public readonly disputeExpirationRepo: DisputeExpirationRepository;
   public readonly anchorService: OnChainAnchorService;
   public readonly chainVerifier: SorobanChainVerifier;
   public readonly attestationService: AttestationService;
@@ -89,6 +95,9 @@ export class ApiServer {
     this.recRepo = new ReconciliationRepository(dbClient);
     this.breakRepo = new BreakRepository(dbClient);
     this.attestationRepo = new AttestationRepository(dbClient);
+    this.disputeRepo = new DisputeRepository(dbClient);
+    this.resolutionRepo = new ResolutionRepository(dbClient);
+    this.disputeExpirationRepo = new DisputeExpirationRepository(dbClient);
     this.anchorService = anchorService ?? new SorobanSettlementAnchor();
     this.chainVerifier =
       chainVerifier ??
@@ -101,8 +110,11 @@ export class ApiServer {
     );
     this.disputeService = new DisputeService(
       this.caseRepo,
+      this.disputeRepo,
+      this.resolutionRepo,
       this.anchorService,
-      this.config.network
+      this.config.network,
+      this.disputeExpirationRepo
     );
     this.finalizationService = new FinalizationService(
       this.caseRepo,

@@ -310,6 +310,73 @@ describe("API Service - Settlement Dispute Workflow", () => {
     assert.strictEqual((caseRes.body as { status: string }).status, "DISPUTED");
   });
 
+  it("preserves dispute and resolution evidence across server restart without in-memory maps", async () => {
+    const db = new InMemoryDatabaseClient();
+    const anchor = new MockAnchorService();
+
+    // Instance 1
+    const server1 = createApiServer(
+      {
+        port: 3000,
+        host: "0.0.0.0",
+        network: TEST_NETWORK,
+        databaseUrl: "postgres://localhost:5432/test",
+        contractId: TEST_CONTRACT_ID,
+      },
+      db,
+      anchor
+    );
+
+    await server1.inject({ method: "POST", url: "/v1/cases", body: { expected: sampleTerms } });
+    await server1.inject({ method: "POST", url: `/v1/cases/${sampleTerms.caseId}/observe`, body: { observation: brokenObserved } });
+    await server1.inject({ method: "POST", url: `/v1/cases/${sampleTerms.caseId}/reconcile` });
+    await server1.inject({
+      method: "POST",
+      url: `/v1/cases/${sampleTerms.caseId}/dispute`,
+      body: { initiator: sampleTerms.owner, reason: "Durable dispute evidence test" },
+    });
+    await server1.inject({
+      method: "POST",
+      url: `/v1/cases/${sampleTerms.caseId}/resolve`,
+      body: {
+        resolver: sampleTerms.owner,
+        resolutionType: "PARTIAL_SETTLEMENT",
+        resolutionCommitment: "4444444444444444444444444444444444444444444444444444444444444444",
+      },
+    });
+
+    // Simulate process restart by creating new server instance with the same dbClient
+    const server2 = createApiServer(
+      {
+        port: 3001,
+        host: "0.0.0.0",
+        network: TEST_NETWORK,
+        databaseUrl: "postgres://localhost:5432/test",
+        contractId: TEST_CONTRACT_ID,
+      },
+      db,
+      anchor
+    );
+
+    const disputeRes = await server2.inject({
+      method: "GET",
+      url: `/v1/cases/${sampleTerms.caseId}/dispute`,
+    });
+
+    assert.strictEqual(disputeRes.statusCode, 200);
+    const disputeBody = disputeRes.body as {
+      caseId: string;
+      status: string;
+      dispute?: { initiator: string; reason: string };
+      resolutions: Array<{ resolver: string; resolutionCommitment: string }>;
+    };
+    assert.strictEqual(disputeBody.status, "DISPUTED");
+    assert.strictEqual(disputeBody.dispute?.initiator, sampleTerms.owner);
+    assert.strictEqual(disputeBody.dispute?.reason, "Durable dispute evidence test");
+    assert.strictEqual(disputeBody.resolutions.length, 1);
+    assert.strictEqual(disputeBody.resolutions[0].resolver, sampleTerms.owner);
+  });
+
   it("rejects resolution when case is not in DISPUTED state (400)", async () => {
     const { server } = setup();
 

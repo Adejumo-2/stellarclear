@@ -298,6 +298,7 @@ export class ApiServer {
           terms_commitment: termsCommitment,
           expires_at_ledger: expected.deadline,
           status: "OPEN",
+          observer_quorum: parsed.data.observerQuorum ?? parsed.data.expected.observerQuorum ?? 1,
           create_tx_hash: anchorResult.txHash,
           submission_status: "CONFIRMED",
           created_at: now,
@@ -360,6 +361,7 @@ export class ApiServer {
             confirmedAtLedger: found.confirmed_at_ledger ? Number(found.confirmed_at_ledger) : undefined,
             createdAtLedger: found.created_at_ledger ? Number(found.created_at_ledger) : undefined,
             finalizedAtLedger: found.finalized_at_ledger ? Number(found.finalized_at_ledger) : undefined,
+            observerQuorum: Number(found.observer_quorum ?? 1),
             createdAt: new Date(found.created_at).toISOString(),
             updatedAt: new Date(found.updated_at).toISOString(),
           },
@@ -961,14 +963,36 @@ export class ApiServer {
         }
         const caseId = parsedId.data;
         try {
-          const attestations = await this.attestationService.getAttestations(caseId);
+          const result = await this.attestationService.getAttestations(caseId);
           return {
             statusCode: 200,
             headers: { "content-type": "application/json", "x-request-id": requestId },
-            body: {
-              caseId,
-              attestations,
-            },
+            body: result,
+          };
+        } catch (err: unknown) {
+          const message = (err as Error).message;
+          if (message.includes("not found")) {
+            return this.errorResponse(404, "NOT_FOUND", message, requestId);
+          }
+          throw err;
+        }
+      }
+
+      // 8c. GET /v1/cases/:caseId/quorum
+      const quorumMatch = pathname.match(/^\/v1\/cases\/([a-zA-Z0-9_-]+)\/quorum$/);
+      if (method === "GET" && quorumMatch) {
+        const rawCaseId = quorumMatch[1];
+        const parsedId = Bytes32HexSchema.safeParse(rawCaseId);
+        if (!parsedId.success) {
+          return this.errorResponse(400, "VALIDATION_ERROR", "Invalid case ID format", requestId);
+        }
+        const caseId = parsedId.data;
+        try {
+          const result = await this.attestationService.getQuorumStatus(caseId);
+          return {
+            statusCode: 200,
+            headers: { "content-type": "application/json", "x-request-id": requestId },
+            body: result,
           };
         } catch (err: unknown) {
           const message = (err as Error).message;

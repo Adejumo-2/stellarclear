@@ -183,6 +183,58 @@ describe("API Service - Settlement Dispute Workflow", () => {
     assert.strictEqual(caseBody.status, "RESOLVED");
   });
 
+  it("rejects dispute opening when case status is OPEN (400 INVALID_STATE)", async () => {
+    const { server } = setup();
+
+    await server.inject({
+      method: "POST",
+      url: "/v1/cases",
+      body: { expected: sampleTerms },
+    });
+
+    const res = await server.inject({
+      method: "POST",
+      url: `/v1/cases/${sampleTerms.caseId}/dispute`,
+      body: {
+        initiator: sampleTerms.owner,
+        reason: "Premature dispute on OPEN case",
+      },
+    });
+
+    assert.strictEqual(res.statusCode, 400);
+    const body = res.body as { error: { code: string; message: string } };
+    assert.strictEqual(body.error.code, "INVALID_STATE");
+  });
+
+  it("rejects dispute opening when case status is OBSERVED (400 INVALID_STATE)", async () => {
+    const { server } = setup();
+
+    await server.inject({
+      method: "POST",
+      url: "/v1/cases",
+      body: { expected: sampleTerms },
+    });
+
+    await server.inject({
+      method: "POST",
+      url: `/v1/cases/${sampleTerms.caseId}/observe`,
+      body: { observation: brokenObserved },
+    });
+
+    const res = await server.inject({
+      method: "POST",
+      url: `/v1/cases/${sampleTerms.caseId}/dispute`,
+      body: {
+        initiator: sampleTerms.owner,
+        reason: "Premature dispute on OBSERVED case before reconciliation",
+      },
+    });
+
+    assert.strictEqual(res.statusCode, 400);
+    const obsBody = res.body as { error: { code: string; message: string } };
+    assert.strictEqual(obsBody.error.code, "INVALID_STATE");
+  });
+
   it("rejects resolution when case is not in DISPUTED state (400)", async () => {
     const { server } = setup();
 

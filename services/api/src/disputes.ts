@@ -69,16 +69,21 @@ export class DisputeService {
   ) {}
 
   public async openDispute(caseId: string, req: OpenDisputeRequest) {
+    // Step 1: Load case
     const existingCase = await this.caseRepo.findById(caseId, this.network);
     if (!existingCase) {
       throw new Error(`Case ${caseId} not found`);
     }
 
-    if (existingCase.status !== "BREAK" && existingCase.status !== "OPEN" && existingCase.status !== "OBSERVED") {
-      throw new Error(`Cannot open dispute on case with status ${existingCase.status}. Expected status: BREAK.`);
+    // Step 2: Validate case state — strictly BREAK only
+    if (existingCase.status !== "BREAK") {
+      throw new Error(
+        `INVALID_STATE: Cannot open dispute on case ${caseId}. ` +
+        `Current status is ${existingCase.status}; disputes may only be opened from BREAK status.`
+      );
     }
 
-    // Compute canonical dispute commitment
+    // Step 3 & 4: Compute canonical dispute commitment
     const disputeCommitment = sha256Hex(
       formatDomainDocument(DISPUTE_DOMAIN_PREFIX, {
         caseId,
@@ -88,7 +93,7 @@ export class DisputeService {
       })
     );
 
-    // Anchor on-chain
+    // Step 5 & 6: Submit on-chain transaction first — throws if fails
     const anchorResult = await this.anchorService.anchorDispute({
       initiator: req.initiator,
       caseId,
@@ -97,7 +102,7 @@ export class DisputeService {
 
     const now = new Date().toISOString();
 
-    // Update case in DB
+    // Step 7: Persist durable off-chain state only after on-chain transaction succeeds
     await this.caseRepo.updateStatus(caseId, this.network, "DISPUTED");
     await this.caseRepo.updateChainReferences(caseId, this.network, {
       dispute_tx_hash: anchorResult.txHash,
@@ -112,6 +117,7 @@ export class DisputeService {
     };
     this.disputeStore.set(caseId.toLowerCase(), record);
 
+    // Step 8: Return response
     return {
       caseId,
       status: "DISPUTED",
@@ -128,7 +134,9 @@ export class DisputeService {
     }
 
     if (existingCase.status !== "DISPUTED") {
-      throw new Error(`Cannot submit resolution on case with status ${existingCase.status}. Expected status: DISPUTED.`);
+      throw new Error(
+        `INVALID_STATE: Cannot submit resolution on case with status ${existingCase.status}. Expected status: DISPUTED.`
+      );
     }
 
     // Compute canonical resolution commitment

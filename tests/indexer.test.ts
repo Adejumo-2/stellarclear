@@ -77,7 +77,37 @@ describe("Indexer Service - Event Decoding", () => {
       null
     );
   });
+  it("decodes DisputeExpired event", () => {
+    const decoded = decodeContractEvent({
+      type: "contract",
+      ledger: 1100,
+      contractId: VALID_CONTRACT_ID,
+      id: "0000001100-0000000001",
+      topic: ["DisputeExpired", VALID_CASE_ID],
+      value: { expiration_ledger: 1090, closed_at_ledger: 1100 },
+    });
+    assert.ok(decoded);
+    assert.strictEqual(decoded!.type, "DisputeExpired");
+    assert.strictEqual(decoded!.caseId, VALID_CASE_ID);
+    assert.strictEqual(decoded!.payload["expirationLedger"], 1090);
+    assert.strictEqual(decoded!.payload["closedAtLedger"], 1100);
+  });
+
+  it("decodes CaseQuorumSet event", () => {
+    const decoded = decodeContractEvent({
+      type: "contract",
+      ledger: 1101,
+      contractId: VALID_CONTRACT_ID,
+      id: "0000001101-0000000001",
+      topic: ["CaseQuorumSet", VALID_CASE_ID],
+      value: { quorum: 3 },
+    });
+    assert.ok(decoded);
+    assert.strictEqual(decoded!.type, "CaseQuorumSet");
+    assert.strictEqual(decoded!.payload["quorum"], 3);
+  });
 });
+
 
 describe("Indexer Service - Ingestion, Idempotency & Recovery", () => {
   it("ingests a batch of events and advances cursor", async () => {

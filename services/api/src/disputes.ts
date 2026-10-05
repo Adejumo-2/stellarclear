@@ -29,6 +29,7 @@ export type SubmitResolutionRequest = z.infer<typeof SubmitResolutionRequestSche
 export interface DisputeDetails {
   caseId: string;
   status: string;
+  disputeState?: string;
   dispute?: {
     initiator: string;
     reason: string;
@@ -38,11 +39,29 @@ export interface DisputeDetails {
   };
   resolution?: {
     resolver: string;
-    resolutionType: string;
+    resolutionType?: string;
     resolutionCommitment: string;
     resolutionTxHash?: string;
     resolvedAt: string;
   };
+  resolutions?: Array<{
+    resolver: string;
+    resolutionType?: string;
+    resolutionCommitment: string;
+    resolutionTxHash?: string;
+    submittedAt: string;
+  }>;
+  disputeCommitment?: string | null;
+  resolutionCommitmentsObserved?: string[];
+  mutualResolutionAchieved?: boolean;
+}
+
+interface StoredResolution {
+  resolver: string;
+  resolutionType?: string;
+  resolutionCommitment: string;
+  resolutionTxHash?: string;
+  submittedAt: string;
 }
 
 export class DisputeService {
@@ -54,13 +73,7 @@ export class DisputeService {
     openedAt: string;
   }> = new Map();
 
-  private resolutionStore: Map<string, {
-    resolver: string;
-    resolutionType: string;
-    resolutionCommitment: string;
-    resolutionTxHash?: string;
-    resolvedAt: string;
-  }> = new Map();
+  private resolutionStore: Map<string, StoredResolution[]> = new Map();
 
   constructor(
     private readonly caseRepo: CaseRepository,
@@ -128,18 +141,20 @@ export class DisputeService {
   }
 
   public async submitResolution(caseId: string, req: SubmitResolutionRequest) {
+    // Step 1: Load case
     const existingCase = await this.caseRepo.findById(caseId, this.network);
     if (!existingCase) {
       throw new Error(`Case ${caseId} not found`);
     }
 
+    // Step 2: Validate case status
     if (existingCase.status !== "DISPUTED") {
       throw new Error(
         `INVALID_STATE: Cannot submit resolution on case with status ${existingCase.status}. Expected status: DISPUTED.`
       );
     }
 
-    // Compute canonical resolution commitment
+    // Step 4: Compute canonical resolution commitment
     const resolutionCommitment =
       req.resolutionCommitment ??
       computeResolutionCommitment({
@@ -150,7 +165,7 @@ export class DisputeService {
         details: req.details ?? null,
       });
 
-    // Anchor on-chain
+    // Step 5 & 6: Submit on-chain — throws if transaction fails
     const anchorResult = await this.anchorService.anchorResolution({
       resolver: req.resolver,
       caseId,
@@ -159,27 +174,54 @@ export class DisputeService {
 
     const now = new Date().toISOString();
 
-    // Update case in DB
-    await this.caseRepo.updateStatus(caseId, this.network, "RESOLVED");
     await this.caseRepo.updateChainReferences(caseId, this.network, {
       resolution_tx_hash: anchorResult.txHash,
     });
 
-    const record = {
+    const newRes: StoredResolution = {
       resolver: req.resolver,
       resolutionType: req.resolutionType,
       resolutionCommitment,
       resolutionTxHash: anchorResult.txHash,
-      resolvedAt: now,
+      submittedAt: now,
     };
-    this.resolutionStore.set(caseId.toLowerCase(), record);
+
+    const caseKey = caseId.toLowerCase();
+    const stored = this.resolutionStore.get(caseKey) ?? [];
+    // Replace if resolver already submitted, otherwise append
+    const existingIndex = stored.findIndex((r) => r.resolver === req.resolver);
+    if (existingIndex >= 0) {
+      stored[existingIndex] = newRes;
+    } else {
+      stored.push(newRes);
+    }
+    this.resolutionStore.set(caseKey, stored);
+
+    // Mutual agreement check: both owner and counterparty must submit matching commitments
+    const ownerRes = stored.find((r) => r.resolver === existingCase.owner);
+    const cpRes = existingCase.counterparty
+      ? stored.find((r) => r.resolver === existingCase.counterparty)
+      : null;
+
+    let currentStatus: string = existingCase.status;
+    const isMutual = Boolean(
+      ownerRes &&
+      cpRes &&
+      ownerRes.resolutionCommitment.toLowerCase() === cpRes.resolutionCommitment.toLowerCase()
+    );
+
+    if (isMutual) {
+      await this.caseRepo.updateStatus(caseId, this.network, "RESOLVED");
+      currentStatus = "RESOLVED";
+    }
 
     return {
       caseId,
-      status: "RESOLVED",
+      status: currentStatus,
       resolutionCommitment,
       txHash: anchorResult.txHash,
-      resolvedAt: now,
+      submittedAt: now,
+      mutualResolutionAchieved: currentStatus === "RESOLVED",
     };
   }
 
@@ -190,11 +232,32 @@ export class DisputeService {
     }
 
     const dispute = this.disputeStore.get(caseId.toLowerCase());
-    const resolution = this.resolutionStore.get(caseId.toLowerCase());
+    const storedResolutions = this.resolutionStore.get(caseId.toLowerCase()) ?? [];
+
+    let resolution: DisputeDetails["resolution"] = undefined;
+    if (storedResolutions.length > 0) {
+      const lastRes = storedResolutions[storedResolutions.length - 1];
+      resolution = {
+        resolver: lastRes.resolver,
+        resolutionType: lastRes.resolutionType,
+        resolutionCommitment: lastRes.resolutionCommitment,
+        resolutionTxHash: lastRes.resolutionTxHash,
+        resolvedAt: lastRes.submittedAt,
+      };
+    } else if (existingCase.resolution_tx_hash) {
+      resolution = {
+        resolver: existingCase.owner,
+        resolutionType: "MUTUAL_AGREEMENT",
+        resolutionCommitment: "0".repeat(64),
+        resolutionTxHash: existingCase.resolution_tx_hash,
+        resolvedAt: typeof existingCase.updated_at === "string" ? existingCase.updated_at : existingCase.updated_at.toISOString(),
+      };
+    }
 
     return {
       caseId,
       status: existingCase.status,
+      disputeState: existingCase.status,
       dispute: dispute ?? (existingCase.dispute_tx_hash ? {
         initiator: existingCase.owner,
         reason: "Dispute opened",
@@ -202,13 +265,11 @@ export class DisputeService {
         disputeTxHash: existingCase.dispute_tx_hash,
         openedAt: typeof existingCase.updated_at === "string" ? existingCase.updated_at : existingCase.updated_at.toISOString(),
       } : undefined),
-      resolution: resolution ?? (existingCase.resolution_tx_hash ? {
-        resolver: existingCase.owner,
-        resolutionType: "MUTUAL_AGREEMENT",
-        resolutionCommitment: "0".repeat(64),
-        resolutionTxHash: existingCase.resolution_tx_hash,
-        resolvedAt: typeof existingCase.updated_at === "string" ? existingCase.updated_at : existingCase.updated_at.toISOString(),
-      } : undefined),
+      resolution,
+      resolutions: storedResolutions,
+      disputeCommitment: dispute?.disputeCommitment ?? null,
+      resolutionCommitmentsObserved: storedResolutions.map((r) => r.resolutionCommitment),
+      mutualResolutionAchieved: existingCase.status === "RESOLVED",
     };
   }
 }

@@ -147,7 +147,7 @@ describe("API Service - Settlement Dispute Workflow", () => {
     assert.strictEqual(getDisputeBody.status, "DISPUTED");
     assert.strictEqual(getDisputeBody.dispute?.initiator, sampleTerms.owner);
 
-    // 6. Submit Resolution (POST /v1/cases/:caseId/resolve)
+    // 6. First Resolution Submission (Owner only) — MUST remain DISPUTED
     const resolveRes = await server.inject({
       method: "POST",
       url: `/v1/cases/${sampleTerms.caseId}/resolve`,
@@ -168,10 +168,41 @@ describe("API Service - Settlement Dispute Workflow", () => {
       status: string;
       resolutionCommitment: string;
       txHash: string;
+      mutualResolutionAchieved?: boolean;
     };
-    assert.strictEqual(resolveBody.status, "RESOLVED");
-    assert.strictEqual(resolveBody.txHash, `0x_resolve_tx_${sampleTerms.caseId.slice(0, 8)}`);
+    // First submission must NOT mark case RESOLVED — must remain DISPUTED
+    assert.strictEqual(resolveBody.status, "DISPUTED");
+    assert.strictEqual(resolveBody.mutualResolutionAchieved, false);
     assert.strictEqual(anchor.resolutionCalls.length, 1);
+
+    // Verify DB case status remains DISPUTED after single submission
+    const interimCaseRes = await server.inject({
+      method: "GET",
+      url: `/v1/cases/${sampleTerms.caseId}`,
+    });
+    assert.strictEqual((interimCaseRes.body as { status: string }).status, "DISPUTED");
+
+    // 6b. Second Resolution Submission (Counterparty with matching commitment) — becomes RESOLVED
+    const cpResolveRes = await server.inject({
+      method: "POST",
+      url: `/v1/cases/${sampleTerms.caseId}/resolve`,
+      body: {
+        resolver: sampleTerms.counterparty,
+        resolutionType: "SUPPLEMENTARY_SETTLEMENT_AGREED",
+        resolutionCommitment: resolveBody.resolutionCommitment,
+      },
+    });
+
+    assert.strictEqual(cpResolveRes.statusCode, 200);
+    const cpResolveBody = cpResolveRes.body as {
+      caseId: string;
+      status: string;
+      resolutionCommitment: string;
+      mutualResolutionAchieved?: boolean;
+    };
+    assert.strictEqual(cpResolveBody.status, "RESOLVED");
+    assert.strictEqual(cpResolveBody.mutualResolutionAchieved, true);
+    assert.strictEqual(anchor.resolutionCalls.length, 2);
 
     // 7. Verify case status is now RESOLVED
     const caseRes = await server.inject({
@@ -233,6 +264,50 @@ describe("API Service - Settlement Dispute Workflow", () => {
     assert.strictEqual(res.statusCode, 400);
     const obsBody = res.body as { error: { code: string; message: string } };
     assert.strictEqual(obsBody.error.code, "INVALID_STATE");
+  });
+
+  it("keeps case in DISPUTED state when second resolution has non-matching commitment", async () => {
+    const { server } = setup();
+
+    await server.inject({ method: "POST", url: "/v1/cases", body: { expected: sampleTerms } });
+    await server.inject({ method: "POST", url: `/v1/cases/${sampleTerms.caseId}/observe`, body: { observation: brokenObserved } });
+    await server.inject({ method: "POST", url: `/v1/cases/${sampleTerms.caseId}/reconcile` });
+    await server.inject({
+      method: "POST",
+      url: `/v1/cases/${sampleTerms.caseId}/dispute`,
+      body: { initiator: sampleTerms.owner, reason: "Break detected" },
+    });
+
+    // Owner resolves with commitment A
+    await server.inject({
+      method: "POST",
+      url: `/v1/cases/${sampleTerms.caseId}/resolve`,
+      body: {
+        resolver: sampleTerms.owner,
+        resolutionType: "PROPOSAL_A",
+        resolutionCommitment: "1111111111111111111111111111111111111111111111111111111111111111",
+      },
+    });
+
+    // Counterparty resolves with DIFFERENT commitment B
+    const cpRes = await server.inject({
+      method: "POST",
+      url: `/v1/cases/${sampleTerms.caseId}/resolve`,
+      body: {
+        resolver: sampleTerms.counterparty,
+        resolutionType: "PROPOSAL_B",
+        resolutionCommitment: "2222222222222222222222222222222222222222222222222222222222222222",
+      },
+    });
+
+    assert.strictEqual(cpRes.statusCode, 200);
+    const cpBody = cpRes.body as { status: string; mutualResolutionAchieved: boolean };
+    assert.strictEqual(cpBody.status, "DISPUTED");
+    assert.strictEqual(cpBody.mutualResolutionAchieved, false);
+
+    // Case in DB must still be DISPUTED
+    const caseRes = await server.inject({ method: "GET", url: `/v1/cases/${sampleTerms.caseId}` });
+    assert.strictEqual((caseRes.body as { status: string }).status, "DISPUTED");
   });
 
   it("rejects resolution when case is not in DISPUTED state (400)", async () => {

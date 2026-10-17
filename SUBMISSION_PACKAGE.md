@@ -1,6 +1,6 @@
-# StellarClear — Drips Stellar Wave Submission Package
+# StellarClear — Technical Verification Package (Verified Deployment Metadata & Testnet Evidence)
 
-This document contains the authoritative submission package and verified technical metadata for **StellarClear** in the Drips Stellar Wave Program.
+This document contains verified technical metadata and on-chain testnet evidence for **StellarClear**. It is designed to be self-contained: every fact needed for technical evaluation is inline or linked with a repo-relative path.
 
 ---
 
@@ -21,32 +21,34 @@ The StellarClear protocol strictly separates trustless on-chain state anchoring 
 
        OFF-CHAIN REPOSITORY                          ON-CHAIN REPOSITORY
   StellarClear/stellarclear-app                StellarClear/stellarclear-contract
-┌────────────────────────────────┐            ┌────────────────────────────────┐
-│  REST API (services/api)       │            │  SettlementRegistry Contract   │
-│  - Idempotent case creation    │            │  - Authoritative State Anchor  │
-│  - Proof generation & verify   │            │  - Observer Registry Whitelist │
-├────────────────────────────────┤            │  - Cryptographic Commitments   │
-│  Matcher (packages/matcher)    │            │  - Dispute State Transitions   │
-│  - Deterministic reconciliation│            │  - Multi-Party Attestations    │
-│  - Standardized Break Taxonomy │            │  - Typed Soroban Events        │
-├────────────────────────────────┤            └────────────────────────────────┘
-│  Streaming Indexer             │                             ▲
-│  - Event stream checkpointing  │                             │
-│  - Relational SQL sync         │ ◄── Soroban RPC Events ─────┤
-├────────────────────────────────┤                             │
-│  Client SDK (packages/sdk)     │ ─── Contract Invocations ───┘
-│  - Auto-generated bindings     │
-│  - Error normalization         │
-└────────────────────────────────┘
+┌────────────────────────────────────────┐      ┌────────────────────────────────┐
+│  REST API (services/api)               │      │  SettlementRegistry Contract   │
+│  - Idempotent case creation            │      │  - Authoritative State Anchor  │
+│  - Proof generation & verify           │      │  - Observer Registry Whitelist │
+├────────────────────────────────────────┤      │  - Cryptographic Commitments   │
+│  Matcher (services/matcher)            │      │  - Dispute State Transitions   │
+│  - Deterministic reconciliation        │      │  - Multi-Party Attestations    │
+│  - Standardized Break Taxonomy         │      │  - Typed Soroban Events        │
+├────────────────────────────────────────┤      └────────────────────────────────┘
+│  Streaming Indexer (services/indexer)  │                           ▲
+│  - Event stream checkpointing          │                           │
+│  - Relational SQL sync                 │ ◄── Soroban RPC Events ───┤
+├────────────────────────────────────────┤                           │
+│  Client SDK (packages/sdk)             │ ─── Contract Invocations ─┘
+│  - Auto-generated bindings             │
+│  - Error normalization                 │
+└────────────────────────────────────────┘
 ```
 
 1. **[`StellarClear/stellarclear-contract`](https://github.com/StellarClear/stellarclear-contract)** hosts the authoritative Soroban smart contract (`SettlementRegistry`). Written in Rust, it provides immutable state storage, cryptographic commitment validation, observer authorization whitelisting, multi-party attestation tracking, dispute resolution transitions, and event emission. The contract never custodies funds; it acts as an incorruptible referee anchoring settlement lifecycle milestones.
 2. **[`StellarClear/stellarclear-app`](https://github.com/StellarClear/stellarclear-app)** hosts the off-chain TypeScript monorepo providing the high-throughput operational infrastructure:
    - `packages/sdk`: Typed contract client generated directly from Soroban contract specs, providing error normalization and attestation helpers.
    - `packages/proof`: Canonical deterministic JSON hashing library computing collision-resistant SHA-256 commitments for trade terms and observation records.
-   - `packages/matcher`: Deterministic arithmetic reconciliation engine identifying clean matches or categorizing reconciliation breaks (`AMOUNT_MISMATCH`, `DESTINATION_MISMATCH`, `LATE_SETTLEMENT`, etc.).
+   - `services/matcher`: Deterministic arithmetic reconciliation engine identifying clean matches or categorizing reconciliation breaks (`AMOUNT_MISMATCH`, `DESTINATION_MISMATCH`, `LATE_SETTLEMENT`, etc.).
    - `services/indexer`: Resilient event streamer ingesting Soroban contract events from the RPC endpoint and maintaining an indexed relational PostgreSQL view.
    - `services/api`: Enterprise Fastify REST API providing idempotent case management, dispute workflows, cryptographic proof validation, and operational health diagnostics.
+
+> Note: a local checkout of the application repo may be named `stellarclear`; the canonical repository name is **`stellarclear-app`**.
 
 ---
 
@@ -57,7 +59,7 @@ The StellarClear protocol strictly separates trustless on-chain state anchoring 
 | **Application Repository** | [`https://github.com/StellarClear/stellarclear-app`](https://github.com/StellarClear/stellarclear-app) |
 | **Smart Contract Repository** | [`https://github.com/StellarClear/stellarclear-contract`](https://github.com/StellarClear/stellarclear-contract) |
 | **Live Documentation URL** | [`https://stellarclear.github.io/stellarclear-app/`](https://stellarclear.github.io/stellarclear-app/) |
-| **Live Application / Runtime Topology** | Monorepo multi-container runtime (`services/api`, `services/indexer`, `postgres:16`) managed via [`docker-compose.yml`](file:///home/smog/StellarClear/stellarclear/docker-compose.yml) & [`Dockerfile`](file:///home/smog/StellarClear/stellarclear/Dockerfile) |
+| **Live Application / Runtime Topology** | Monorepo multi-container runtime (`services/api`, `services/indexer`, `postgres:16`) managed via [`docker-compose.yml`](./docker-compose.yml) & [`Dockerfile`](./Dockerfile) |
 | **Active Deployed Contract ID (v0.1.1 Hardened)** | `CCPCMPIUTKBLSJVSGPPSUHTBBY6HHT3OTE3CKUXC5BD2B3YEDSAROGC5` |
 | **Historical Prototype Contract ID (v0.1.0)** | `CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC` |
 | **Active Explorer Contract URL** | [`https://stellar.expert/explorer/testnet/contract/CCPCMPIUTKBLSJVSGPPSUHTBBY6HHT3OTE3CKUXC5BD2B3YEDSAROGC5`](https://stellar.expert/explorer/testnet/contract/CCPCMPIUTKBLSJVSGPPSUHTBBY6HHT3OTE3CKUXC5BD2B3YEDSAROGC5) |
@@ -79,7 +81,7 @@ The StellarClear protocol strictly separates trustless on-chain state anchoring 
 - **WASM SHA-256**: `0073a4cb2027140ac34e4db6c64c2d4104590ec60cf0ef2e424909eba9ae36ac`
 - **WASM Byte Size**: `32,773 bytes`
 - **Target Network**: Stellar Testnet (`https://soroban-testnet.stellar.org`)
-- **Pinned Reference**: [`packages/settlement-registry/src/release.ts`](file:///home/smog/StellarClear/stellarclear/packages/settlement-registry/src/release.ts)
+- **Pinned Reference**: [`packages/settlement-registry/src/release.ts`](./packages/settlement-registry/src/release.ts)
 
 ### Historical Prototype Instance (Testnet v0.1.0)
 - **Contract ID**: `CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC`
@@ -92,7 +94,7 @@ The StellarClear protocol strictly separates trustless on-chain state anchoring 
 - **Toolchain**: Rust Stable (`wasm32v1-none`), Soroban SDK `27.0.4`, Stellar CLI `28.1.0`
 - **WASM SHA-256**: `0073a4cb2027140ac34e4db6c64c2d4104590ec60cf0ef2e424909eba9ae36ac`
 - **WASM Byte Size**: `32,773 bytes` (optimized with deterministic compiler flags)
-- **Manifest Location**: [`artifacts/release-manifest.json`](file:///home/smog/StellarClear/stellarclear-contract/artifacts/release-manifest.json)
+- **Manifest Location**: `../stellarclear-contract/artifacts/release-manifest.json`
 
 ---
 
@@ -109,7 +111,7 @@ The StellarClear protocol strictly separates trustless on-chain state anchoring 
 | **[#5](https://github.com/StellarClear/stellarclear-contract/issues/5)** | `feat(contract): implement observer quorum threshold logic` | `stellarclear-contract` | PR #14 (commit `2032666`) | **Closed** |
 | **[#6](https://github.com/StellarClear/stellarclear-contract/issues/6)** | `feat(contract): enforce dispute expiration TTL` | `stellarclear-contract` | PR #14 (commit `2032666`) | **Closed** |
 
-### Post-Release Operational Enhancements (Non-Blockers)
+### Post-Release Operational Enhancements (Non-Blockers, Scheduled v0.2.0)
 
 | Issue # | Title | Labels | Priority | Classification |
 | :--- | :--- | :--- | :--- | :--- |
@@ -118,11 +120,10 @@ The StellarClear protocol strictly separates trustless on-chain state anchoring 
 
 ---
 
-## 6. Drips Approval & Next Phase Notice
+## 6. Verification & Security Status
 
-- **Approval Status**: **Ready for Maintainer Submission**.
-- **Submission Path**: The repository maintainer will onboard the `StellarClear` GitHub organization via the [Drips Wave Maintainer Dashboard](https://www.drips.network/wave/stellar).
-- **Phase Transition Notice**: Phase 13 (Post-Approval Maintenance & Operations) will strictly begin only after approval is independently confirmed on the Drips network.
+- **Status**: Testnet-complete, verified against active deployment `CCPCMPIUTKBLSJVSGPPSUHTBBY6HHT3OTE3CKUXC5BD2B3YEDSAROGC5`.
+- **Security Artifacts**: STRIDE threat model ([`docs/threat-model.md`](./docs/threat-model.md)) and operational monitoring plan ([`docs/monitoring-plan.md`](./docs/monitoring-plan.md)).
 
 ---
 
@@ -140,3 +141,4 @@ All 7 required protocol lifecycle scenarios have been executed directly against 
 | **Flow F** | Dispute Expiration with Custom TTL | `cdaa30dc13c314117cf3cadde1d375b3d27309a81188b4a393b7a0e33c5c0552` | 5049500 | TTL 120 ledgers set; premature expiration blocked (`Error #20 DisputeNotExpired`) | [View on StellarExpert](https://stellar.expert/explorer/testnet/tx/cdaa30dc13c314117cf3cadde1d375b3d27309a81188b4a393b7a0e33c5c0552) |
 | **Flow G** | Finalized Case Immutability | `438c1eb040117b6b251e8fa6c7c5693d117886bf1e2879b997a71e32cece57a9` | 5049426 | Mutation attempts on finalized Case A rejected with `Error #7 (InvalidState)` | [View on StellarExpert](https://stellar.expert/explorer/testnet/tx/438c1eb040117b6b251e8fa6c7c5693d117886bf1e2879b997a71e32cece57a9) |
 
+Machine-readable copy: [`testnet-evidence.json`](./testnet-evidence.json).

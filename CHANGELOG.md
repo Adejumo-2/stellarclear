@@ -8,7 +8,7 @@ All notable changes tracked here. Format based on Keep a Changelog.
 - Pinned release configuration synchronized while strictly isolating historical v0.1.0 prototype (`CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC`) for provenance.
 - Generated contract bindings fully aligned with all 21 public entrypoints and event interfaces.
 - Issue reconciliation completed: closed protocol issues #16, #17, #2, #3 on `stellarclear-app` and #5, #6 on `stellarclear-contract`; classified #18 and #19 as non-blocking post-release operational enhancements.
-- Updated authoritative Drips submission package with verified live transaction evidence and explorer links.
+- Updated authoritative verification package with verified live transaction evidence and explorer links.
 
 ## [0.1.0] - 2026-10
 - Initial settlement evidence + reconciliation protocol (schemas, proof, sdk, db, indexer, matcher, api).

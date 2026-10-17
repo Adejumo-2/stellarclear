@@ -32,7 +32,7 @@ StellarClear is a non-custodial settlement verification protocol for Stellar tha
 | **API Reference** | [REST API Docs](https://stellarclear.github.io/stellarclear-app/reference/api.html) (Local: [`docs/api.md`](./docs/api.md)) | Endpoints, request/response schemas, and idempotency semantics |
 | **Security Policy** | [`SECURITY.md`](./SECURITY.md) | Vulnerability disclosure policy and security posture |
 | **Contributing Guide** | [`CONTRIBUTING.md`](./CONTRIBUTING.md) | Development workflow, commit conventions, and testing guidelines |
-| **Submission Package** | [`SUBMISSION_PACKAGE.md`](./SUBMISSION_PACKAGE.md) | Verified technical submission metadata and testnet execution evidence |
+| **Verification Package** | [`SUBMISSION_PACKAGE.md`](./SUBMISSION_PACKAGE.md) | Verified technical deployment metadata and testnet execution evidence |
 
 ---
 
@@ -413,13 +413,14 @@ We welcome community contributions to StellarClear. Please refer to [`CONTRIBUTI
 
 ---
 
-## Ecosystem & Wave Submission
+## Technical Verification & Resources
 
-StellarClear is prepared for Stellar Wave submission in the Drips ecosystem:
+StellarClear's verification materials and protocol specifications are maintained in-repo:
 
 - **Application Monorepo**: [`StellarClear/stellarclear-app`](https://github.com/StellarClear/stellarclear-app)
 - **Smart Contract Monorepo**: [`StellarClear/stellarclear-contract`](https://github.com/StellarClear/stellarclear-contract)
-- **Authoritative Submission Package**: [`SUBMISSION_PACKAGE.md`](./SUBMISSION_PACKAGE.md)
+- **Technical Evidence Package**: [`SUBMISSION_PACKAGE.md`](./SUBMISSION_PACKAGE.md)
+- **Security Artifacts**: [`docs/threat-model.md`](./docs/threat-model.md) (STRIDE) and [`docs/monitoring-plan.md`](./docs/monitoring-plan.md)
 - **Public Documentation Site**: [`https://stellarclear.github.io/stellarclear-app/`](https://stellarclear.github.io/stellarclear-app/)
 
 ---

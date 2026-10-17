@@ -56,6 +56,62 @@ flowchart TD
 
 ---
 
+## Trust Boundaries & Data Flow
+
+The system spans five trust boundaries. Untrusted data crosses them only in defined directions; raw trade terms never leave the off-chain tier (only SHA-256 commitments do).
+
+```mermaid
+flowchart TD
+    subgraph TB0["TB0 — Public internet (untrusted)"]
+        Client["Integrator / Counterparty client"]
+        WSClient["WebSocket stream consumers"]
+    end
+
+    subgraph TB1["TB1 — Application tier (private network)"]
+        API["REST API"]
+        Matcher["Matcher"]
+        Indexer["Indexer"]
+        Proof["Proof Engine"]
+    end
+
+    subgraph TB2["TB2 — Data tier (private network)"]
+        DB[("PostgreSQL")]
+    end
+
+    subgraph TB3["TB3 — Public Stellar network"]
+        RPC["Soroban RPC"]
+        Contract["SettlementRegistry"]
+    end
+
+    subgraph TB4["TB4 — Third-party observers (semi-trusted)"]
+        Obs["Observer daemons"]
+    end
+
+    Client -->|"REST (no end-user auth in v0.1.1 — private exposure only)"| API
+    API --> Matcher
+    API --> Proof
+    API -->|"SQL, credentials from env"| DB
+    Indexer -->|"checkpoint writes"| DB
+    Indexer -->|"getEvents"| RPC
+    API -->|"contract invocations"| RPC
+    Obs -->|"signed invocations"| RPC
+    RPC --> Contract
+    Contract -->|"contract events"| Indexer
+    Indexer -->|"WS stream, optional auth token"| WSClient
+```
+
+| Boundary | Crossing | Control |
+| :--- | :--- | :--- |
+| TB0 → TB1 | REST requests | Strict Zod validation, idempotency keys; network-level isolation (API auth is a mainnet blocker — see Threat `Spoof.2`) |
+| TB1 → TB2 | SQL | Credentials via environment only; Postgres never publicly mapped |
+| TB1 / TB4 → TB3 | Contract invocations | `require_auth()` role checks on-chain; signer keys never in repo |
+| TB3 → TB1 | Contract events | Indexer cursor checkpoints + idempotent DB constraints |
+| TB5 (Operator/CI) | Deploys, secrets | Pinned reproducible artifacts, GitHub secret scanning |
+
+Full threat analysis: [Threat Model (STRIDE)](./threat-model.md) · [Monitoring Plan](./monitoring-plan.md).
+
+---
+
 ## Monorepo Components
 
 ### 1. Packages
